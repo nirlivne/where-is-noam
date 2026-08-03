@@ -268,6 +268,9 @@ a:hover { color: var(--accent); }
 .icon-btn[aria-pressed="true"] { background: var(--ink); color: var(--band); }
 .icon-btn:focus-visible { outline: 3px solid var(--region-0); outline-offset: 2px; }
 
+.icon-btn-accent { background: var(--accent); color: #fff; }
+.icon-btn-accent:hover { background: #FF7454; }
+
 /* ───────────────────────────── layout ───────────────────────────── */
 
 main {
@@ -599,6 +602,31 @@ main {
   50%      { outline-width: 4px; outline-color: rgba(var(--ink-rgb), .35); }
 }
 
+/* "?" shown only on the cell a hint just pointed at (a real child, since
+   ::before/::after are already spoken for by the X mark and Noam's sticker).
+   Kept faint and slow so it reads as a nudge, not an answer. */
+.hint-mark {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: currentColor;
+  pointer-events: none;
+}
+.cell.hint .hint-mark {
+  display: flex;
+  animation: hint-breathe 2.4s ease-in-out infinite;
+}
+@keyframes hint-breathe {
+  0%, 100% { opacity: .15; }
+  50%      { opacity: .55; }
+}
+
 /* Optional colour-number assist. A real child, not a pseudo-element:
    ::before draws the X and ::after draws Noam, and a cell has no third slot. */
 .glyph-num {
@@ -625,6 +653,38 @@ main {
   border-radius: var(--r-md);
   background: var(--accent-3);
   box-shadow: var(--pop-sm) var(--pop-sm) 0 var(--ink);
+  text-wrap: pretty;
+}
+
+/* A disclosure, not a command — no border/shadow/pop like .btn-small, just an
+   underlined line so it reads as "reveal more", not another action button. */
+.btn-link {
+  display: block;
+  margin: .6rem auto 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: .8rem;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  opacity: .75;
+}
+.btn-link:hover { color: var(--accent); opacity: 1; }
+
+.hint-explain {
+  max-width: 32rem;
+  margin: .6rem auto 0;
+  padding: .65rem .9rem;
+  text-align: center;
+  font-size: .85rem;
+  line-height: 1.4;
+  border: var(--edge) dashed var(--ink);
+  border-radius: var(--r-md);
+  background: var(--paper);
   text-wrap: pretty;
 }
 
@@ -898,6 +958,8 @@ dialog.about .dialog-actions { justify-content: center; }
     <span class="brand-word">איפה נועם?</span>
   </div>
 
+  <button class="icon-btn icon-btn-accent" id="open-about" type="button" title="על נועם">♥</button>
+
   <div class="rank" id="rank">
     <div class="rank-line">
       <span class="rank-name" id="rank-name">מתחיל</span>
@@ -910,7 +972,6 @@ dialog.about .dialog-actions { justify-content: center; }
     <button class="icon-btn" id="mute" type="button" aria-pressed="false" title="צליל">
       <span id="mute-glyph">♪</span>
     </button>
-    <button class="icon-btn" id="open-about" type="button" title="על נועם">♥</button>
     <button class="icon-btn" id="open-settings" type="button" title="הגדרות">✳</button>
   </div>
 </header>
@@ -953,8 +1014,8 @@ dialog.about .dialog-actions { justify-content: center; }
     </div>
 
     <div class="menu-actions">
-      <button class="btn btn-primary" id="new-game" type="button">משחק חדש</button>
       <button class="btn" id="resume" type="button" hidden>המשך</button>
+      <button class="btn" id="new-game" type="button">משחק חדש</button>
       <button class="btn" id="open-howto" type="button">איך משחקים</button>
     </div>
   </section>
@@ -988,6 +1049,8 @@ dialog.about .dialog-actions { justify-content: center; }
     </div>
 
     <p class="hint-text" id="hint-text" hidden></p>
+    <button class="btn-link" id="hint-explain-toggle" type="button" hidden>הסבר את הרמז</button>
+    <p class="hint-explain" id="hint-explain" hidden></p>
 
     <div class="legend">
       <span><b class="k">לחיצה</b> או <b class="k">גרירה</b> — סימון משבצת ריקה</span>
@@ -1519,12 +1582,17 @@ const ALL_RULES = ['R1', 'R3', 'R4', 'R5', 'R6'];
  * guessing must never be required.
  *
  * Propagation (clearing a placed cat's row, column, region and neighbours) is
- * definitional, not a scored rule, so it carries no weight.
+ * definitional, not a scored rule, so it carries no weight — but it is still
+ * recorded in causeOf/order below, since a hint's "why" can bottom out there.
  *
- * Returns { solved, cost, rulesUsed, placed, cand, steps }.
- *   placed: Int8Array, 1 where a cat is proven
- *   cand:   Int8Array, 1 where a cat is still possible
- *   steps:  ordered log of deductions, used to power hints
+ * Returns { solved, cost, rulesUsed, placed, cand, steps, causeOf, order }.
+ *   placed:  Int8Array, 1 where a cat is proven
+ *   cand:    Int8Array, 1 where a cat is still possible
+ *   steps:   ordered log of deductions, used to power hints
+ *   causeOf: per-cell reason it was eliminated (rule + context, or propagation
+ *            source), null for cells never eliminated
+ *   order:   per-cell elimination sequence number, -1 if never eliminated;
+ *            lets a hint find which candidate of a unit died last
  */
 function combinations(arr, k) {
   const out = [];
@@ -1548,6 +1616,13 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const units = unitsOf(n, regions);
   const rulesUsed = { R1: 0, R3: 0, R4: 0, R5: 0, R6: 0 };
   const steps = [];
+  // Per-cell "why was this ruled out" trail, used to power the hint explainer:
+  // causeOf records what eliminated it, order records when (a running counter
+  // over the whole solve), so a hint can find whichever candidate of a unit
+  // died *last* — the domino that actually closed the unit down to one cell.
+  const causeOf = new Array(size).fill(null);
+  const order = new Int32Array(size).fill(-1);
+  let seq = 0;
   let cost = 0;
   let placedCount = 0;
   let contradiction = false;
@@ -1555,10 +1630,12 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const candidatesIn = (unit) => unit.cells.filter(i => cand[i]);
   const unitHasCat = (unit) => unit.cells.some(i => placed[i]);
 
-  function eliminate(i) {
+  function eliminate(i, cause) {
     if (!cand[i]) return false;
     if (placed[i]) { contradiction = true; return false; }
     cand[i] = 0;
+    causeOf[i] = cause;
+    order[i] = seq++;
     return true;
   }
 
@@ -1568,9 +1645,9 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
     placedCount++;
     for (const unit of units) {
       if (!unit.cells.includes(i)) continue;
-      for (const j of unit.cells) if (j !== i) eliminate(j);
+      for (const j of unit.cells) if (j !== i) eliminate(j, { rule: 'propagate', from: i });
     }
-    for (const j of neighbors8(n, i)) eliminate(j);
+    for (const j of neighbors8(n, i)) eliminate(j, { rule: 'propagate', from: i });
   }
 
   function ruleR1() {
@@ -1603,7 +1680,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const r = [...rows][0];
         for (let c = 0; c < n; c++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j)) changed = true;
+          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
         }
       }
 
@@ -1612,7 +1689,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const c = [...cols][0];
         for (let r = 0; r < n; r++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j)) changed = true;
+          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
         }
       }
 
@@ -1641,7 +1718,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       const inUnit = new Set(cs);
       let changed = false;
       for (let i = 0; i < n * n; i++) {
-        if (regions[i] === reg && !inUnit.has(i) && eliminate(i)) changed = true;
+        if (regions[i] === reg && !inUnit.has(i) && eliminate(i, { rule: 'R4', unit })) changed = true;
       }
 
       if (changed) {
@@ -1671,7 +1748,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       }
 
       let changed = false;
-      for (const i of common) if (eliminate(i)) changed = true;
+      for (const i of common) if (eliminate(i, { rule: 'R5', unit })) changed = true;
 
       if (changed) {
         if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit });
@@ -1708,16 +1785,17 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
           if (popcount(union) !== k) continue;
 
           const chosen = new Set(combo.map(r => r.key));
+          const chosenRegions = [...chosen];
           let changed = false;
           for (let i = 0; i < n * n; i++) {
             if (!cand[i] || placed[i]) continue;
             if (!(union & (1 << lineOf(n, i)))) continue;
             if (chosen.has(regions[i])) continue;
-            if (eliminate(i)) changed = true;
+            if (eliminate(i, { rule: 'R6', axis, regions: chosenRegions })) changed = true;
           }
 
           if (changed) {
-            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: [...chosen] });
+            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: chosenRegions });
             return true;
           }
         }
@@ -1746,7 +1824,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
 
   return {
     solved: !contradiction && placedCount === n,
-    cost, rulesUsed, placed, cand, steps
+    cost, rulesUsed, placed, cand, steps, causeOf, order
   };
 }
 
@@ -2379,12 +2457,17 @@ const ALL_RULES = ['R1', 'R3', 'R4', 'R5', 'R6'];
  * guessing must never be required.
  *
  * Propagation (clearing a placed cat's row, column, region and neighbours) is
- * definitional, not a scored rule, so it carries no weight.
+ * definitional, not a scored rule, so it carries no weight — but it is still
+ * recorded in causeOf/order below, since a hint's "why" can bottom out there.
  *
- * Returns { solved, cost, rulesUsed, placed, cand, steps }.
- *   placed: Int8Array, 1 where a cat is proven
- *   cand:   Int8Array, 1 where a cat is still possible
- *   steps:  ordered log of deductions, used to power hints
+ * Returns { solved, cost, rulesUsed, placed, cand, steps, causeOf, order }.
+ *   placed:  Int8Array, 1 where a cat is proven
+ *   cand:    Int8Array, 1 where a cat is still possible
+ *   steps:   ordered log of deductions, used to power hints
+ *   causeOf: per-cell reason it was eliminated (rule + context, or propagation
+ *            source), null for cells never eliminated
+ *   order:   per-cell elimination sequence number, -1 if never eliminated;
+ *            lets a hint find which candidate of a unit died last
  */
 function combinations(arr, k) {
   const out = [];
@@ -2408,6 +2491,13 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const units = unitsOf(n, regions);
   const rulesUsed = { R1: 0, R3: 0, R4: 0, R5: 0, R6: 0 };
   const steps = [];
+  // Per-cell "why was this ruled out" trail, used to power the hint explainer:
+  // causeOf records what eliminated it, order records when (a running counter
+  // over the whole solve), so a hint can find whichever candidate of a unit
+  // died *last* — the domino that actually closed the unit down to one cell.
+  const causeOf = new Array(size).fill(null);
+  const order = new Int32Array(size).fill(-1);
+  let seq = 0;
   let cost = 0;
   let placedCount = 0;
   let contradiction = false;
@@ -2415,10 +2505,12 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const candidatesIn = (unit) => unit.cells.filter(i => cand[i]);
   const unitHasCat = (unit) => unit.cells.some(i => placed[i]);
 
-  function eliminate(i) {
+  function eliminate(i, cause) {
     if (!cand[i]) return false;
     if (placed[i]) { contradiction = true; return false; }
     cand[i] = 0;
+    causeOf[i] = cause;
+    order[i] = seq++;
     return true;
   }
 
@@ -2428,9 +2520,9 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
     placedCount++;
     for (const unit of units) {
       if (!unit.cells.includes(i)) continue;
-      for (const j of unit.cells) if (j !== i) eliminate(j);
+      for (const j of unit.cells) if (j !== i) eliminate(j, { rule: 'propagate', from: i });
     }
-    for (const j of neighbors8(n, i)) eliminate(j);
+    for (const j of neighbors8(n, i)) eliminate(j, { rule: 'propagate', from: i });
   }
 
   function ruleR1() {
@@ -2463,7 +2555,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const r = [...rows][0];
         for (let c = 0; c < n; c++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j)) changed = true;
+          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
         }
       }
 
@@ -2472,7 +2564,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const c = [...cols][0];
         for (let r = 0; r < n; r++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j)) changed = true;
+          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
         }
       }
 
@@ -2501,7 +2593,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       const inUnit = new Set(cs);
       let changed = false;
       for (let i = 0; i < n * n; i++) {
-        if (regions[i] === reg && !inUnit.has(i) && eliminate(i)) changed = true;
+        if (regions[i] === reg && !inUnit.has(i) && eliminate(i, { rule: 'R4', unit })) changed = true;
       }
 
       if (changed) {
@@ -2531,7 +2623,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       }
 
       let changed = false;
-      for (const i of common) if (eliminate(i)) changed = true;
+      for (const i of common) if (eliminate(i, { rule: 'R5', unit })) changed = true;
 
       if (changed) {
         if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit });
@@ -2568,16 +2660,17 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
           if (popcount(union) !== k) continue;
 
           const chosen = new Set(combo.map(r => r.key));
+          const chosenRegions = [...chosen];
           let changed = false;
           for (let i = 0; i < n * n; i++) {
             if (!cand[i] || placed[i]) continue;
             if (!(union & (1 << lineOf(n, i)))) continue;
             if (chosen.has(regions[i])) continue;
-            if (eliminate(i)) changed = true;
+            if (eliminate(i, { rule: 'R6', axis, regions: chosenRegions })) changed = true;
           }
 
           if (changed) {
-            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: [...chosen] });
+            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: chosenRegions });
             return true;
           }
         }
@@ -2606,7 +2699,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
 
   return {
     solved: !contradiction && placedCount === n,
-    cost, rulesUsed, placed, cand, steps
+    cost, rulesUsed, placed, cand, steps, causeOf, order
   };
 }
 
@@ -2818,7 +2911,7 @@ return { generateAsync };
 })();
 
 const $game = (() => {
-const { neighbors8, unitsOf } = $board;
+const { neighbors8, unitsOf, rowOf, colOf } = $board;
 const { deduce } = $deduction;
 
 
@@ -2978,6 +3071,36 @@ const RULE_TEXT = {
 };
 
 /**
+ * Finds whichever other candidate of the hinted unit was ruled out last
+ * (highest elimination order) and returns its cause. That elimination is what
+ * actually closed the unit down to the one cell the hint points at, so it is
+ * the single prior fact "explain this hint" surfaces to the player.
+ */
+function explainStep(n, regions, res, step) {
+  const { causeOf, order } = res;
+  let last = -1;
+  for (const i of step.unit.cells) {
+    if (i === step.cell) continue;
+    if (last === -1 || order[i] > order[last]) last = i;
+  }
+  const cause = last === -1 ? null : causeOf[last];
+  if (!cause) return null;
+
+  if (cause.rule === 'propagate') {
+    const from = cause.from;
+    let relation;
+    if (rowOf(n, from) === rowOf(n, last)) relation = 'row';
+    else if (colOf(n, from) === colOf(n, last)) relation = 'col';
+    else if (regions[from] === regions[last]) relation = 'region';
+    else relation = 'neighbor';
+    // cell, not row/col: display formatting (incl. the RTL column convention
+    // hintLine already applies) is main.js's job, not the reducer's.
+    return { kind: 'propagate', relation, cell: from };
+  }
+  return { kind: 'rule', rule: cause.rule };
+}
+
+/**
  * Re-derives the solution from scratch and returns the first proven cat the
  * player has not found yet.
  *
@@ -2995,7 +3118,13 @@ function hint(state) {
     const s = clone(state);
     s.hintUsed = true;
     s.log.push({ type: 'hint', cell: step.cell, rule: step.rule, at: Date.now() });
-    return { state: s, cell: step.cell, rule: step.rule, text: RULE_TEXT[step.rule] };
+    return {
+      state: s,
+      cell: step.cell,
+      rule: step.rule,
+      text: RULE_TEXT[step.rule],
+      explain: explainStep(n, regions, res, step)
+    };
   }
   return null;
 }
@@ -3048,6 +3177,12 @@ function buildBoard(el, puzzle) {
     glyph.textContent = regions[i] + 1;
     div.appendChild(glyph);
 
+    const hintMark = document.createElement('span');
+    hintMark.className = 'hint-mark';
+    hintMark.textContent = '?';
+    hintMark.setAttribute('aria-hidden', 'true');
+    div.appendChild(hintMark);
+
     el.appendChild(div);
     cells.push(div);
   }
@@ -3058,7 +3193,7 @@ function buildBoard(el, puzzle) {
  * Full repaint from state. No diffing — a hundred className writes is well
  * under a frame, and it removes a whole category of stale-DOM bugs.
  */
-function render(cells, state, { focusCell = -1 } = {}) {
+function render(cells, state, { focusCell = -1, hintCell = -1 } = {}) {
   const { marks, locked, faulted } = state;
   for (let i = 0; i < cells.length; i++) {
     const el = cells[i];
@@ -3067,6 +3202,7 @@ function render(cells, state, { focusCell = -1 } = {}) {
     el.classList.toggle('is-locked', locked[i] === 1);
     el.classList.toggle('is-faulted', faulted.has(i));
     el.classList.toggle('focus', i === focusCell);
+    el.classList.toggle('hint', i === hintCell);
   }
 }
 
@@ -3620,8 +3756,17 @@ async function celebrateAbout(dialogEl) {
   if (REDUCED || !dialogEl) return;
   stopCelebration();
 
-  const THREE = await loadThree();
-  if (!dialogEl.open) return; // closed again while three.js was loading
+  // The dialog's own open animation (sheet-up / pop-in) sets `transform`
+  // while it plays, which makes the dialog a containing block for our
+  // position:fixed canvas — full-viewport sizing only works once it's back
+  // to `transform: none`. Wait for it alongside the three.js load rather
+  // than after (getAnimations() is empty, and this resolves immediately, if
+  // the animation already finished by the time we get here).
+  const [THREE] = await Promise.all([
+    loadThree(),
+    Promise.all(dialogEl.getAnimations().map((a) => a.finished)).catch(() => {})
+  ]);
+  if (!dialogEl.open) return; // closed again while we were waiting
 
   audio.play('confetti');
 
@@ -3771,6 +3916,25 @@ const RULES = {
 const hintLine = (row, col, rule) =>
   `שורה ${row}, עמודה ${col} — ${RULES[rule] ?? RULES.R1}.`;
 
+/** Why the *previous* cell in this line/colour was ruled out — the one fact
+ *  that closed the hinted cell down to being the only option left. */
+const HINT_RELATION = {
+  row: 'באותה שורה',
+  col: 'באותה עמודה',
+  region: 'באותו צבע',
+  neighbor: 'צמוד אליה'
+};
+
+const hintExplainLine = (row, col, explain) => {
+  if (!explain) return '';
+  if (explain.kind === 'propagate') {
+    const rel = HINT_RELATION[explain.relation] ?? HINT_RELATION.neighbor;
+    return `האפשרות האחרונה שנשארה שם נפסלה כי כבר יש נועם ${rel} — ` +
+      `בשורה ${row}, עמודה ${col}.`;
+  }
+  return `לפני כן, ${RULES[explain.rule] ?? RULES.R1}.`;
+};
+
 /** 1 and 2 read badly as digits mid-sentence; 3 ends the game, so it never gets here. */
 const MISTAKES = { 1: 'טעות אחת', 2: 'שתי טעויות' };
 
@@ -3792,7 +3956,7 @@ const postMortemLine = (row, col) =>
 
 const GENERATE_FAILED = 'לא הצלחנו לבנות חידה בגודל הזה. נסו שוב.';
 
-return { DIFFICULTY, RANKS, hintLine, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED };
+return { DIFFICULTY, RANKS, hintLine, hintExplainLine, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED };
 })();
 
 (() => {
@@ -3827,6 +3991,7 @@ let settings = storage.getSettings();
 let state = null;
 let cells = [];
 let focusCell = 0;
+let hintCell = -1;
 let startedAt = 0;
 let elapsedBase = 0;   // seconds carried over from a resumed game
 let tick = null;
@@ -3840,8 +4005,15 @@ const elapsedSeconds = () =>
 
 const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+// The board itself stays LTR regardless of page direction (see the "LTR ON
+// PURPOSE" note on .board in styles.css), but Hebrew reads right-to-left — so
+// a column number spoken in a sentence should count from the right, the
+// reverse of colOf's left-origin index.
+const displayCol = (n, cell) => n - colOf(n, cell);
+
 function paint(events = []) {
-  render(cells, state, { focusCell });
+  hintCell = -1; // any real move invalidates the last hint's "?" marker
+  render(cells, state, { focusCell, hintCell });
   for (const e of events) handleEvent(e);
 }
 
@@ -3873,7 +4045,10 @@ function renderAssists() {
 
 function renderMenu() {
   renderRank();
-  $('resume').hidden = storage.loadGame() === null;
+  const hasSave = storage.loadGame() !== null;
+  $('resume').hidden = !hasSave;
+  $('resume').classList.toggle('btn-primary', hasSave);
+  $('new-game').classList.toggle('btn-primary', !hasSave);
 }
 
 /* ───────────────────────────── events from the reducer ─────────────────── */
@@ -3948,6 +4123,7 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
 
   cells = buildBoard($('board'), puzzle);
   focusCell = 0;
+  hintCell = -1;
   elapsedBase = restore?.elapsed ?? 0;
   startedAt = Date.now();
 
@@ -3955,11 +4131,13 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
   $('meta-difficulty').textContent = t.DIFFICULTY[puzzle.difficulty] ?? '';
   $('timer').textContent = formatTime(elapsedSeconds());
   $('hint-text').hidden = true;
+  $('hint-explain-toggle').hidden = true;
+  $('hint-explain').hidden = true;
 
   renderAssists();
   renderPips();
   showScreen('game');
-  render(cells, state, { focusCell });
+  render(cells, state, { focusCell, hintCell });
   if (!restore) fx.dealIn(cells, puzzle.n);
   startClock();
   scheduleSave();
@@ -4027,7 +4205,7 @@ function finishLose() {
 
   if (mistake) {
     const r = rowOf(state.puzzle.n, mistake.cell) + 1;
-    const c = colOf(state.puzzle.n, mistake.cell) + 1;
+    const c = displayCol(state.puzzle.n, mistake.cell);
     $('result-postmortem').textContent = t.postMortemLine(r, c);
     $('result-postmortem').hidden = false;
     cells[mistake.cell].classList.add('is-faulted');
@@ -4064,7 +4242,7 @@ const handlers = {
   onRollback(cell, mark) {
     const r = paintMark(state, cell, mark);
     state = r.state;
-    render(cells, state, { focusCell });
+    render(cells, state, { focusCell, hintCell });
   },
 
   onReveal(cell) {
@@ -4099,7 +4277,7 @@ const handlers = {
     if (key === 'ArrowLeft') c = Math.max(0, c - 1);
     if (key === 'ArrowRight') c = Math.min(n - 1, c + 1);
     focusCell = idx(n, r, c);
-    render(cells, state, { focusCell });
+    render(cells, state, { focusCell, hintCell });
   },
 
   onToggleFocused() { handlers.onToggle(focusCell); },
@@ -4156,15 +4334,35 @@ $('hint').addEventListener('click', () => {
   if (!h) return;
   state = h.state;
   focusCell = h.cell;
+  hintCell = h.cell;
   audio.play('hint');
   $('hint-text').textContent = t.hintLine(
     rowOf(state.puzzle.n, h.cell) + 1,
-    colOf(state.puzzle.n, h.cell) + 1,
+    displayCol(state.puzzle.n, h.cell),
     h.rule
   );
   $('hint-text').hidden = false;
-  render(cells, state, { focusCell });
+
+  $('hint-explain').hidden = true;
+  $('hint-explain-toggle').textContent = 'הסבר את הרמז';
+  $('hint-explain-toggle').hidden = !h.explain;
+  if (h.explain) {
+    const ec = h.explain.cell;
+    $('hint-explain').textContent = t.hintExplainLine(
+      ec !== undefined ? rowOf(state.puzzle.n, ec) + 1 : null,
+      ec !== undefined ? displayCol(state.puzzle.n, ec) : null,
+      h.explain
+    );
+  }
+
+  render(cells, state, { focusCell, hintCell });
   scheduleSave();
+});
+
+$('hint-explain-toggle').addEventListener('click', () => {
+  const willShow = $('hint-explain').hidden;
+  $('hint-explain').hidden = !willShow;
+  $('hint-explain-toggle').textContent = willShow ? 'הסתר את ההסבר' : 'הסבר את הרמז';
 });
 
 $('result-retry').addEventListener('click', () => {
