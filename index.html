@@ -118,6 +118,7 @@
 
   /* ── Surface ── */
   --ink:        #171512;   /* every keyline and every hard shadow  */
+  --ink-rgb:    23, 21, 18; /* --ink, split for rgba() alpha fades  */
   --paper:      #FDF6EC;   /* page ground                          */
   --panel:      #FFFFFF;   /* raised things: buttons, cards        */
   --band:       #FFE9CC;   /* header band, generating screen       */
@@ -583,7 +584,20 @@ main {
 
 .cell.is-faulted { box-shadow: inset 0 0 0 4px var(--accent); }
 
-.cell.focus { outline: 3px solid var(--ink); outline-offset: -3px; z-index: 2; }
+/* Mild breathing pulse (width + fade) rather than a static ring, so the
+   current cell — keyboard cursor or hint target — stays easy to spot
+   without shouting. prefers-reduced-motion (below) collapses this to a
+   single still frame. */
+.cell.focus {
+  outline: 3px solid var(--ink);
+  outline-offset: -3px;
+  z-index: 2;
+  animation: focus-breathe 2.4s ease-in-out infinite;
+}
+@keyframes focus-breathe {
+  0%, 100% { outline-width: 3px; outline-color: rgba(var(--ink-rgb), .9); }
+  50%      { outline-width: 4px; outline-color: rgba(var(--ink-rgb), .35); }
+}
 
 /* Optional colour-number assist. A real child, not a pseudo-element:
    ::before draws the X and ::after draws Noam, and a cell has no third slot. */
