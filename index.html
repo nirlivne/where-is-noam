@@ -3066,15 +3066,22 @@ const HOLD_MS = 1000;
 const HOLD_HINT_MS = 350;
 const MOVE_CANCEL_PX = 10;
 const ROLLBACK_WINDOW_MS = 700;
+const DOUBLE_TAP_MS = 350;
 
 /**
  * Translates raw pointer and keyboard events into intents. Owns no game state.
  *
- * The hard part: a double-click arrives *after* two click-toggles have already
- * been applied to the cell. Rather than delaying every single click by 250ms to
+ * The hard part: a double-tap arrives *after* two click-toggles have already
+ * been applied to the cell. Rather than delaying every single tap by 250ms to
  * find out whether a second one is coming, toggles apply immediately and are
  * rolled back if a reveal fires. Worst case is a brief flicker; the alternative
  * is latency on every interaction in the game.
+ *
+ * Double-tap is detected manually (matching cell + timestamp across successive
+ * pointerdowns), not via the native `dblclick` event: `setPointerCapture` below
+ * retargets every click in the gesture to `boardEl`, so the browser's own
+ * same-target check is always true — two fast taps on *different* cells would
+ * otherwise both read as one double-click on the second cell.
  */
 function attachInput(boardEl, handlers) {
   let painting = null;     // the mark value this drag applies
@@ -3082,6 +3089,8 @@ function attachInput(boardEl, handlers) {
   let downXY = null;
   let moved = false;
   let holdTimer = null;
+  let lastTapCell = -1;
+  let lastTapTime = -Infinity;
   const rollback = new Map(); // cell -> mark it held before the recent toggles
 
   const cellFrom = (target) => {
@@ -3117,20 +3126,27 @@ function attachInput(boardEl, handlers) {
   boardEl.addEventListener('pointerdown', (e) => {
     const cell = cellFrom(e.target);
     if (cell < 0) return;
-    // Deliberately no preventDefault here: calling it on pointerdown suppresses
-    // the compatibility mouse events, which silently kills dblclick and with it
-    // half the reveal gesture. Selection and scrolling are already handled by
-    // user-select and touch-action in CSS.
+    // Deliberately no preventDefault here: selection and scrolling are already
+    // handled by user-select and touch-action in CSS, so there's nothing left
+    // to suppress and no reason to eat the event's default behavior.
     boardEl.setPointerCapture(e.pointerId);
 
     downCell = cell;
     downXY = { x: e.clientX, y: e.clientY };
     moved = false;
 
+    const isDoubleTap = cell === lastTapCell && (e.timeStamp - lastTapTime) <= DOUBLE_TAP_MS;
+    lastTapCell = -1;
+
     const prior = handlers.getMark(cell);
     remember(cell, prior);
     painting = prior === MARK.EMPTY ? MARK.X : MARK.EMPTY;
     handlers.onToggle(cell);
+
+    if (isDoubleTap) {
+      doReveal(cell);
+      return;
+    }
 
     handlers.onHoldStart?.(cell, HOLD_HINT_MS, HOLD_MS);
     holdTimer = setTimeout(() => { holdTimer = null; doReveal(cell); }, HOLD_MS);
@@ -3154,17 +3170,17 @@ function attachInput(boardEl, handlers) {
     downCell = -1;
     downXY = null;
   };
-  boardEl.addEventListener('pointerup', end);
-  boardEl.addEventListener('pointercancel', end);
-
-  boardEl.addEventListener('dblclick', (e) => {
-    // Not e.target: pointer capture is set on the board during pointerdown, and
-    // every later event in the sequence — including the derived click and
-    // dblclick — is retargeted to the capturing element. Resolving by
-    // coordinates is the only way to learn which cell was actually hit.
-    const cell = cellFrom(document.elementFromPoint(e.clientX, e.clientY));
-    if (cell >= 0 && !moved) doReveal(cell);
+  boardEl.addEventListener('pointerup', (e) => {
+    // painting is non-null only for a plain tap (a reveal — hold or double-tap —
+    // already nulls it). Record it so the *next* pointerdown can recognize a
+    // same-cell double-tap; a moved pointer (drag) never counts as a tap.
+    if (!moved && painting !== null && downCell >= 0) {
+      lastTapCell = downCell;
+      lastTapTime = e.timeStamp;
+    }
+    end();
   });
+  boardEl.addEventListener('pointercancel', end);
 
   // Mobile browsers pop a context callout at roughly 500-800ms — right inside
   // the hold window. Without this, long-press is unusable on touch.
@@ -3434,7 +3450,127 @@ function dealIn(cells, n) {
 return { catPop, markX, autoXRipple, strikeShake, holdProgress, winCascade, dealIn };
 })();
 
+const $audio = (() => {
+/**
+ * Everything is synthesized. No asset files means no licensing questions, no
+ * load latency, and a meow whose pitch can track your progress for free.
+ */
+let ctx = null;
+let muted = false;
+
+function setMuted(value) { muted = value; }
+function isMuted() { return muted; }
+
+/** Browsers block audio until a user gesture — call this from the first one. */
+function unlock() {
+  if (!ctx) {
+    const Ctor = window.AudioContext ?? window.webkitAudioContext;
+    if (!Ctor) return;
+    ctx = new Ctor();
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+}
+
+/** Filtered white noise with a fast decay — the transient "pop"/"pssht" tones can't fake. */
+function noiseBurst({ dur = 0.12, gain = 0.22, filterFrom = 2200, filterTo = 700, q = 1.2, delay = 0 }) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay;
+
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.Q.value = q;
+  filter.frequency.setValueAtTime(filterFrom, t);
+  filter.frequency.exponentialRampToValueAtTime(filterTo, t + dur);
+
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(gain, t);
+  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  src.connect(filter).connect(amp).connect(ctx.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+function tone({ type = 'sawtooth', from, to, dur, gain = 0.14, filter = null, delay = 0 }) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay;
+
+  const osc = ctx.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(from, t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(0.0001, t);
+  amp.gain.exponentialRampToValueAtTime(gain, t + dur * 0.15);
+  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  let node = osc;
+  if (filter) {
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = filter;
+    bp.Q.value = 4;
+    node.connect(bp);
+    node = bp;
+  }
+  node.connect(amp).connect(ctx.destination);
+
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
+}
+
+const sfx = {
+  // Two swept sawtooths through a bandpass: up then down is the shape of a
+  // cartoon meow. Pitch rises with each cat found, so progress is audible.
+  meow(found = 0, total = 8) {
+    const base = 360 * (1 + 0.5 * (found / Math.max(1, total)));
+    tone({ from: base, to: base * 1.5, dur: 0.16, filter: 950, gain: 0.16 });
+    tone({ from: base * 1.4, to: base * 0.8, dur: 0.24, filter: 780, gain: 0.13, delay: 0.14 });
+  },
+  mark() {
+    tone({ type: 'square', from: 200, to: 130, dur: 0.045, gain: 0.04 });
+  },
+  strike() {
+    tone({ type: 'sawtooth', from: 170, to: 48, dur: 0.42, gain: 0.22 });
+    tone({ type: 'square', from: 90, to: 40, dur: 0.3, gain: 0.1, delay: 0.02 });
+  },
+  win() {
+    [0, 0.13, 0.26, 0.42].forEach((d, i) => {
+      tone({ type: 'triangle', from: 420 * (1 + i * 0.22), to: 640 * (1 + i * 0.22), dur: 0.3, gain: 0.12, delay: d });
+    });
+  },
+  lose() {
+    tone({ type: 'sawtooth', from: 240, to: 60, dur: 0.9, gain: 0.18, filter: 500 });
+  },
+  hint() {
+    tone({ type: 'triangle', from: 620, to: 880, dur: 0.16, gain: 0.1 });
+  },
+  // Party popper: a filtered noise burst (the "pssht") layered with a fast
+  // downward click (the "pop" transient) — no single oscillator sells it.
+  confetti() {
+    noiseBurst({ dur: 0.1, gain: 0.3, filterFrom: 3400, filterTo: 900, q: 0.9 });
+    tone({ type: 'square', from: 950, to: 210, dur: 0.07, gain: 0.11 });
+  }
+};
+
+function play(name, ...args) {
+  if (!ctx || muted) return;
+  sfx[name]?.(...args);
+}
+
+return { setMuted, isMuted, unlock, play };
+})();
+
 const $confetti = (() => {
+const audio = $audio;
 // Confetti burst for the about dialog, rendered with three.js (loaded from
 // CDN via the importmap in index.html, see docs/plans/2026-08-03-about-panel-confetti-design.md).
 //
@@ -3446,14 +3582,15 @@ const $confetti = (() => {
 // between it and the dialog has a transform at rest) and still lives in the
 // dialog's top-layer subtree, giving a true full-viewport overlay.
 
+
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
-const COUNT = 130;
+const COUNT = 220;
 const VIEW_HEIGHT = 10; // orthographic camera world units spanning the viewport height
-const GRAVITY = 9;
-const DRAG = 0.5;
-const BURST_DURATION = 2200;
-const FADE_DURATION = 450;
+const GRAVITY = 5;
+const DRAG = 0.4;
+const BURST_DURATION = 3400;
+const FADE_DURATION = 550;
 
 let threePromise = null;
 const loadThree = () => (threePromise ??= import('three'));
@@ -3471,6 +3608,8 @@ async function celebrateAbout(dialogEl) {
 
   const THREE = await loadThree();
   if (!dialogEl.open) return; // closed again while three.js was loading
+
+  audio.play('confetti');
 
   const canvas = document.createElement('canvas');
   canvas.className = 'confetti-canvas';
@@ -3496,8 +3635,8 @@ async function celebrateAbout(dialogEl) {
 
   const pieces = [];
   for (let i = 0; i < COUNT; i++) {
-    const w = 0.22 + Math.random() * 0.16;
-    const h = 0.14 + Math.random() * 0.1;
+    const w = 0.2 + Math.random() * 0.22;
+    const h = 0.13 + Math.random() * 0.13;
 
     const mat = new THREE.MeshBasicMaterial({ color: colors[i % colors.length], side: THREE.DoubleSide, transparent: true });
     const mesh = new THREE.Mesh(pieceGeo, mat);
@@ -3507,9 +3646,11 @@ async function celebrateAbout(dialogEl) {
     const group = new THREE.Group();
     group.scale.set(w, h, 1);
     group.add(mesh, line);
+    // Spawn already inside the visible frame (upper band) so the burst reads
+    // immediately, instead of rising through an invisible zone above the camera.
     group.position.set(
       (Math.random() - 0.5) * viewWidth,
-      VIEW_HEIGHT / 2 + Math.random() * 2,
+      VIEW_HEIGHT * (0.2 + Math.random() * 0.35),
       (Math.random() - 0.5) * 2
     );
     group.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
@@ -3517,10 +3658,10 @@ async function celebrateAbout(dialogEl) {
 
     pieces.push({
       group, mat, lineMat,
-      vx: (Math.random() - 0.5) * 5,
-      vy: 3 + Math.random() * 4,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 1.5 + Math.random() * 3,
       vz: (Math.random() - 0.5) * 2,
-      spin: new THREE.Vector3((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5)
+      spin: new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6)
     });
   }
 
@@ -3578,92 +3719,6 @@ function stopCelebration() {
 }
 
 return { celebrateAbout, stopCelebration };
-})();
-
-const $audio = (() => {
-/**
- * Everything is synthesized. No asset files means no licensing questions, no
- * load latency, and a meow whose pitch can track your progress for free.
- */
-let ctx = null;
-let muted = false;
-
-function setMuted(value) { muted = value; }
-function isMuted() { return muted; }
-
-/** Browsers block audio until a user gesture — call this from the first one. */
-function unlock() {
-  if (!ctx) {
-    const Ctor = window.AudioContext ?? window.webkitAudioContext;
-    if (!Ctor) return;
-    ctx = new Ctor();
-  }
-  if (ctx.state === 'suspended') ctx.resume();
-}
-
-function tone({ type = 'sawtooth', from, to, dur, gain = 0.14, filter = null, delay = 0 }) {
-  if (!ctx || muted) return;
-  const t = ctx.currentTime + delay;
-
-  const osc = ctx.createOscillator();
-  osc.type = type;
-  osc.frequency.setValueAtTime(from, t);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
-
-  const amp = ctx.createGain();
-  amp.gain.setValueAtTime(0.0001, t);
-  amp.gain.exponentialRampToValueAtTime(gain, t + dur * 0.15);
-  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-  let node = osc;
-  if (filter) {
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = filter;
-    bp.Q.value = 4;
-    node.connect(bp);
-    node = bp;
-  }
-  node.connect(amp).connect(ctx.destination);
-
-  osc.start(t);
-  osc.stop(t + dur + 0.05);
-}
-
-const sfx = {
-  // Two swept sawtooths through a bandpass: up then down is the shape of a
-  // cartoon meow. Pitch rises with each cat found, so progress is audible.
-  meow(found = 0, total = 8) {
-    const base = 360 * (1 + 0.5 * (found / Math.max(1, total)));
-    tone({ from: base, to: base * 1.5, dur: 0.16, filter: 950, gain: 0.16 });
-    tone({ from: base * 1.4, to: base * 0.8, dur: 0.24, filter: 780, gain: 0.13, delay: 0.14 });
-  },
-  mark() {
-    tone({ type: 'square', from: 200, to: 130, dur: 0.045, gain: 0.04 });
-  },
-  strike() {
-    tone({ type: 'sawtooth', from: 170, to: 48, dur: 0.42, gain: 0.22 });
-    tone({ type: 'square', from: 90, to: 40, dur: 0.3, gain: 0.1, delay: 0.02 });
-  },
-  win() {
-    [0, 0.13, 0.26, 0.42].forEach((d, i) => {
-      tone({ type: 'triangle', from: 420 * (1 + i * 0.22), to: 640 * (1 + i * 0.22), dur: 0.3, gain: 0.12, delay: d });
-    });
-  },
-  lose() {
-    tone({ type: 'sawtooth', from: 240, to: 60, dur: 0.9, gain: 0.18, filter: 500 });
-  },
-  hint() {
-    tone({ type: 'triangle', from: 620, to: 880, dur: 0.16, gain: 0.1 });
-  }
-};
-
-function play(name, ...args) {
-  if (!ctx || muted) return;
-  sfx[name]?.(...args);
-}
-
-return { setMuted, isMuted, unlock, play };
 })();
 
 const $strings = (() => {
