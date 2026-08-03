@@ -374,6 +374,9 @@ main {
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover { background: #FF7454; }
 
+.btn-danger { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+.btn-danger:hover { background: var(--accent); color: #fff; }
+
 .btn-small {
   padding: .45rem .85rem;
   font-size: .8rem;
@@ -382,7 +385,8 @@ main {
 }
 .btn-small:active { transform: translate(calc(var(--pop-sm) * -1), var(--pop-sm)); }
 
-.menu-actions { display: flex; gap: .9rem; flex-wrap: wrap; margin-bottom: 2.4rem; }
+.menu-actions { display: flex; flex-direction: column; align-items: flex-start; gap: .9rem; margin-bottom: 2.4rem; }
+.menu-actions-primary { display: flex; gap: .9rem; flex-wrap: wrap; }
 
 /* ───────────────────────────── how to play ───────────────────────────── */
 
@@ -656,38 +660,6 @@ main {
   text-wrap: pretty;
 }
 
-/* A disclosure, not a command — no border/shadow/pop like .btn-small, just an
-   underlined line so it reads as "reveal more", not another action button. */
-.btn-link {
-  display: block;
-  margin: .6rem auto 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: inherit;
-  font-size: .8rem;
-  color: var(--ink);
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
-  cursor: pointer;
-  opacity: .75;
-}
-.btn-link:hover { color: var(--accent); opacity: 1; }
-
-.hint-explain {
-  max-width: 32rem;
-  margin: .6rem auto 0;
-  padding: .65rem .9rem;
-  text-align: center;
-  font-size: .85rem;
-  line-height: 1.4;
-  border: var(--edge) dashed var(--ink);
-  border-radius: var(--r-md);
-  background: var(--paper);
-  text-wrap: pretty;
-}
-
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -819,6 +791,7 @@ dialog h2 {
 .dialog-sub { margin: 0 0 1.1rem; font-size: .9rem; font-weight: 500; color: var(--chrome); }
 
 .dialog-actions { display: flex; gap: .7rem; justify-content: flex-start; margin-top: 1.4rem; }
+#settings .dialog-actions { justify-content: space-between; }
 
 /* The about panel — a small birthday card. Festive accent, same shape
    as the win dialog (#result.is-win), everything centered. */
@@ -958,8 +931,6 @@ dialog.about .dialog-actions { justify-content: center; }
     <span class="brand-word">איפה נועם?</span>
   </div>
 
-  <button class="icon-btn icon-btn-accent" id="open-about" type="button" title="על נועם">♥</button>
-
   <div class="rank" id="rank">
     <div class="rank-line">
       <span class="rank-name" id="rank-name">מתחיל</span>
@@ -973,6 +944,7 @@ dialog.about .dialog-actions { justify-content: center; }
       <span id="mute-glyph">♪</span>
     </button>
     <button class="icon-btn" id="open-settings" type="button" title="הגדרות">✳</button>
+    <button class="icon-btn icon-btn-accent" id="open-about" type="button" title="על נועם">♥</button>
   </div>
 </header>
 
@@ -982,6 +954,13 @@ dialog.about .dialog-actions { justify-content: center; }
   <section id="menu">
     <h1 class="display">איפה<br>נועם?</h1>
     <p class="tagline">מצאו אותו בכל שורה, בכל עמודה ובכל צבע.</p>
+
+    <div class="menu-actions">
+      <div class="menu-actions-primary">
+        <button class="btn" id="resume" type="button" hidden>המשך משחק</button>
+        <button class="btn" id="new-game" type="button">משחק חדש</button>
+      </div>
+    </div>
 
     <div class="setup">
       <div class="field">
@@ -1013,11 +992,7 @@ dialog.about .dialog-actions { justify-content: center; }
       </div>
     </div>
 
-    <div class="menu-actions">
-      <button class="btn" id="resume" type="button" hidden>המשך</button>
-      <button class="btn" id="new-game" type="button">משחק חדש</button>
-      <button class="btn" id="open-howto" type="button">איך משחקים</button>
-    </div>
+    <button class="btn" id="open-howto" type="button">איך משחקים?</button>
   </section>
 
   <!-- ─────────────────────────── GAME ─────────────────────────── -->
@@ -1049,8 +1024,6 @@ dialog.about .dialog-actions { justify-content: center; }
     </div>
 
     <p class="hint-text" id="hint-text" hidden></p>
-    <button class="btn-link" id="hint-explain-toggle" type="button" hidden>הסבר את הרמז</button>
-    <p class="hint-explain" id="hint-explain" hidden></p>
 
     <div class="legend">
       <span><b class="k">לחיצה</b> או <b class="k">גרירה</b> — סימון משבצת ריקה</span>
@@ -1082,7 +1055,10 @@ dialog.about .dialog-actions { justify-content: center; }
     <li><label><input type="checkbox" id="set-glyphs"><span>מספרי צבעים</span><em>הדפסת מספר הצבע בפינת המשבצת</em></label></li>
     <li><label><input type="checkbox" id="set-muted"><span>השתקה</span><em>כיבוי כל הצלילים</em></label></li>
   </ul>
-  <div class="dialog-actions"><button class="btn btn-primary" id="close-settings" type="button">סיימתי</button></div>
+  <div class="dialog-actions">
+    <button class="btn btn-small btn-danger" id="clear-storage" type="button">נקה את כל הנתונים</button>
+    <button class="btn btn-primary" id="close-settings" type="button">סיימתי</button>
+  </div>
 </dialog>
 
 <dialog id="howto" class="sheet">
@@ -1582,17 +1558,12 @@ const ALL_RULES = ['R1', 'R3', 'R4', 'R5', 'R6'];
  * guessing must never be required.
  *
  * Propagation (clearing a placed cat's row, column, region and neighbours) is
- * definitional, not a scored rule, so it carries no weight — but it is still
- * recorded in causeOf/order below, since a hint's "why" can bottom out there.
+ * definitional, not a scored rule, so it carries no weight.
  *
- * Returns { solved, cost, rulesUsed, placed, cand, steps, causeOf, order }.
- *   placed:  Int8Array, 1 where a cat is proven
- *   cand:    Int8Array, 1 where a cat is still possible
- *   steps:   ordered log of deductions, used to power hints
- *   causeOf: per-cell reason it was eliminated (rule + context, or propagation
- *            source), null for cells never eliminated
- *   order:   per-cell elimination sequence number, -1 if never eliminated;
- *            lets a hint find which candidate of a unit died last
+ * Returns { solved, cost, rulesUsed, placed, cand, steps }.
+ *   placed: Int8Array, 1 where a cat is proven
+ *   cand:   Int8Array, 1 where a cat is still possible
+ *   steps:  ordered log of deductions, used to power hints
  */
 function combinations(arr, k) {
   const out = [];
@@ -1616,13 +1587,6 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const units = unitsOf(n, regions);
   const rulesUsed = { R1: 0, R3: 0, R4: 0, R5: 0, R6: 0 };
   const steps = [];
-  // Per-cell "why was this ruled out" trail, used to power the hint explainer:
-  // causeOf records what eliminated it, order records when (a running counter
-  // over the whole solve), so a hint can find whichever candidate of a unit
-  // died *last* — the domino that actually closed the unit down to one cell.
-  const causeOf = new Array(size).fill(null);
-  const order = new Int32Array(size).fill(-1);
-  let seq = 0;
   let cost = 0;
   let placedCount = 0;
   let contradiction = false;
@@ -1630,12 +1594,10 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const candidatesIn = (unit) => unit.cells.filter(i => cand[i]);
   const unitHasCat = (unit) => unit.cells.some(i => placed[i]);
 
-  function eliminate(i, cause) {
+  function eliminate(i) {
     if (!cand[i]) return false;
     if (placed[i]) { contradiction = true; return false; }
     cand[i] = 0;
-    causeOf[i] = cause;
-    order[i] = seq++;
     return true;
   }
 
@@ -1645,9 +1607,9 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
     placedCount++;
     for (const unit of units) {
       if (!unit.cells.includes(i)) continue;
-      for (const j of unit.cells) if (j !== i) eliminate(j, { rule: 'propagate', from: i });
+      for (const j of unit.cells) if (j !== i) eliminate(j);
     }
-    for (const j of neighbors8(n, i)) eliminate(j, { rule: 'propagate', from: i });
+    for (const j of neighbors8(n, i)) eliminate(j);
   }
 
   function ruleR1() {
@@ -1680,7 +1642,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const r = [...rows][0];
         for (let c = 0; c < n; c++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
+          if (regions[j] !== unit.key && eliminate(j)) changed = true;
         }
       }
 
@@ -1689,7 +1651,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const c = [...cols][0];
         for (let r = 0; r < n; r++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
+          if (regions[j] !== unit.key && eliminate(j)) changed = true;
         }
       }
 
@@ -1718,7 +1680,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       const inUnit = new Set(cs);
       let changed = false;
       for (let i = 0; i < n * n; i++) {
-        if (regions[i] === reg && !inUnit.has(i) && eliminate(i, { rule: 'R4', unit })) changed = true;
+        if (regions[i] === reg && !inUnit.has(i) && eliminate(i)) changed = true;
       }
 
       if (changed) {
@@ -1748,7 +1710,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       }
 
       let changed = false;
-      for (const i of common) if (eliminate(i, { rule: 'R5', unit })) changed = true;
+      for (const i of common) if (eliminate(i)) changed = true;
 
       if (changed) {
         if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit });
@@ -1785,17 +1747,16 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
           if (popcount(union) !== k) continue;
 
           const chosen = new Set(combo.map(r => r.key));
-          const chosenRegions = [...chosen];
           let changed = false;
           for (let i = 0; i < n * n; i++) {
             if (!cand[i] || placed[i]) continue;
             if (!(union & (1 << lineOf(n, i)))) continue;
             if (chosen.has(regions[i])) continue;
-            if (eliminate(i, { rule: 'R6', axis, regions: chosenRegions })) changed = true;
+            if (eliminate(i)) changed = true;
           }
 
           if (changed) {
-            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: chosenRegions });
+            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: [...chosen] });
             return true;
           }
         }
@@ -1824,7 +1785,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
 
   return {
     solved: !contradiction && placedCount === n,
-    cost, rulesUsed, placed, cand, steps, causeOf, order
+    cost, rulesUsed, placed, cand, steps
   };
 }
 
@@ -2457,17 +2418,12 @@ const ALL_RULES = ['R1', 'R3', 'R4', 'R5', 'R6'];
  * guessing must never be required.
  *
  * Propagation (clearing a placed cat's row, column, region and neighbours) is
- * definitional, not a scored rule, so it carries no weight — but it is still
- * recorded in causeOf/order below, since a hint's "why" can bottom out there.
+ * definitional, not a scored rule, so it carries no weight.
  *
- * Returns { solved, cost, rulesUsed, placed, cand, steps, causeOf, order }.
- *   placed:  Int8Array, 1 where a cat is proven
- *   cand:    Int8Array, 1 where a cat is still possible
- *   steps:   ordered log of deductions, used to power hints
- *   causeOf: per-cell reason it was eliminated (rule + context, or propagation
- *            source), null for cells never eliminated
- *   order:   per-cell elimination sequence number, -1 if never eliminated;
- *            lets a hint find which candidate of a unit died last
+ * Returns { solved, cost, rulesUsed, placed, cand, steps }.
+ *   placed: Int8Array, 1 where a cat is proven
+ *   cand:   Int8Array, 1 where a cat is still possible
+ *   steps:  ordered log of deductions, used to power hints
  */
 function combinations(arr, k) {
   const out = [];
@@ -2491,13 +2447,6 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const units = unitsOf(n, regions);
   const rulesUsed = { R1: 0, R3: 0, R4: 0, R5: 0, R6: 0 };
   const steps = [];
-  // Per-cell "why was this ruled out" trail, used to power the hint explainer:
-  // causeOf records what eliminated it, order records when (a running counter
-  // over the whole solve), so a hint can find whichever candidate of a unit
-  // died *last* — the domino that actually closed the unit down to one cell.
-  const causeOf = new Array(size).fill(null);
-  const order = new Int32Array(size).fill(-1);
-  let seq = 0;
   let cost = 0;
   let placedCount = 0;
   let contradiction = false;
@@ -2505,12 +2454,10 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
   const candidatesIn = (unit) => unit.cells.filter(i => cand[i]);
   const unitHasCat = (unit) => unit.cells.some(i => placed[i]);
 
-  function eliminate(i, cause) {
+  function eliminate(i) {
     if (!cand[i]) return false;
     if (placed[i]) { contradiction = true; return false; }
     cand[i] = 0;
-    causeOf[i] = cause;
-    order[i] = seq++;
     return true;
   }
 
@@ -2520,9 +2467,9 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
     placedCount++;
     for (const unit of units) {
       if (!unit.cells.includes(i)) continue;
-      for (const j of unit.cells) if (j !== i) eliminate(j, { rule: 'propagate', from: i });
+      for (const j of unit.cells) if (j !== i) eliminate(j);
     }
-    for (const j of neighbors8(n, i)) eliminate(j, { rule: 'propagate', from: i });
+    for (const j of neighbors8(n, i)) eliminate(j);
   }
 
   function ruleR1() {
@@ -2555,7 +2502,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const r = [...rows][0];
         for (let c = 0; c < n; c++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
+          if (regions[j] !== unit.key && eliminate(j)) changed = true;
         }
       }
 
@@ -2564,7 +2511,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
         const c = [...cols][0];
         for (let r = 0; r < n; r++) {
           const j = idx(n, r, c);
-          if (regions[j] !== unit.key && eliminate(j, { rule: 'R3', unit })) changed = true;
+          if (regions[j] !== unit.key && eliminate(j)) changed = true;
         }
       }
 
@@ -2593,7 +2540,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       const inUnit = new Set(cs);
       let changed = false;
       for (let i = 0; i < n * n; i++) {
-        if (regions[i] === reg && !inUnit.has(i) && eliminate(i, { rule: 'R4', unit })) changed = true;
+        if (regions[i] === reg && !inUnit.has(i) && eliminate(i)) changed = true;
       }
 
       if (changed) {
@@ -2623,7 +2570,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
       }
 
       let changed = false;
-      for (const i of common) if (eliminate(i, { rule: 'R5', unit })) changed = true;
+      for (const i of common) if (eliminate(i)) changed = true;
 
       if (changed) {
         if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit });
@@ -2660,17 +2607,16 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
           if (popcount(union) !== k) continue;
 
           const chosen = new Set(combo.map(r => r.key));
-          const chosenRegions = [...chosen];
           let changed = false;
           for (let i = 0; i < n * n; i++) {
             if (!cand[i] || placed[i]) continue;
             if (!(union & (1 << lineOf(n, i)))) continue;
             if (chosen.has(regions[i])) continue;
-            if (eliminate(i, { rule: 'R6', axis, regions: chosenRegions })) changed = true;
+            if (eliminate(i)) changed = true;
           }
 
           if (changed) {
-            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: chosenRegions });
+            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: [...chosen] });
             return true;
           }
         }
@@ -2699,7 +2645,7 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES } =
 
   return {
     solved: !contradiction && placedCount === n,
-    cost, rulesUsed, placed, cand, steps, causeOf, order
+    cost, rulesUsed, placed, cand, steps
   };
 }
 
@@ -2911,7 +2857,7 @@ return { generateAsync };
 })();
 
 const $game = (() => {
-const { neighbors8, unitsOf, rowOf, colOf } = $board;
+const { neighbors8, unitsOf } = $board;
 const { deduce } = $deduction;
 
 
@@ -3071,36 +3017,6 @@ const RULE_TEXT = {
 };
 
 /**
- * Finds whichever other candidate of the hinted unit was ruled out last
- * (highest elimination order) and returns its cause. That elimination is what
- * actually closed the unit down to the one cell the hint points at, so it is
- * the single prior fact "explain this hint" surfaces to the player.
- */
-function explainStep(n, regions, res, step) {
-  const { causeOf, order } = res;
-  let last = -1;
-  for (const i of step.unit.cells) {
-    if (i === step.cell) continue;
-    if (last === -1 || order[i] > order[last]) last = i;
-  }
-  const cause = last === -1 ? null : causeOf[last];
-  if (!cause) return null;
-
-  if (cause.rule === 'propagate') {
-    const from = cause.from;
-    let relation;
-    if (rowOf(n, from) === rowOf(n, last)) relation = 'row';
-    else if (colOf(n, from) === colOf(n, last)) relation = 'col';
-    else if (regions[from] === regions[last]) relation = 'region';
-    else relation = 'neighbor';
-    // cell, not row/col: display formatting (incl. the RTL column convention
-    // hintLine already applies) is main.js's job, not the reducer's.
-    return { kind: 'propagate', relation, cell: from };
-  }
-  return { kind: 'rule', rule: cause.rule };
-}
-
-/**
  * Re-derives the solution from scratch and returns the first proven cat the
  * player has not found yet.
  *
@@ -3118,13 +3034,7 @@ function hint(state) {
     const s = clone(state);
     s.hintUsed = true;
     s.log.push({ type: 'hint', cell: step.cell, rule: step.rule, at: Date.now() });
-    return {
-      state: s,
-      cell: step.cell,
-      rule: step.rule,
-      text: RULE_TEXT[step.rule],
-      explain: explainStep(n, regions, res, step)
-    };
+    return { state: s, cell: step.cell, rule: step.rule, text: RULE_TEXT[step.rule] };
   }
   return null;
 }
@@ -3355,7 +3265,8 @@ const KEYS = {
   settings: 'cats.settings',
   points: 'cats.points',
   best: 'cats.best',
-  save: 'cats.save'
+  save: 'cats.save',
+  seenHowto: 'cats.seenHowto'
 };
 
 const DEFAULT_SETTINGS = {
@@ -3414,7 +3325,16 @@ function makeStorage(store = globalThis.localStorage) {
       elapsed
     }),
     loadGame: () => read(KEYS.save, null),
-    clearGame: () => { try { store.removeItem(KEYS.save); } catch { /* ignore */ } }
+    clearGame: () => { try { store.removeItem(KEYS.save); } catch { /* ignore */ } },
+
+    hasSeenHowto: () => read(KEYS.seenHowto, false),
+    markHowtoSeen: () => write(KEYS.seenHowto, true),
+
+    clearAll: () => {
+      for (const key of Object.values(KEYS)) {
+        try { store.removeItem(key); } catch { /* ignore */ }
+      }
+    }
   };
 }
 
@@ -3604,12 +3524,49 @@ const $audio = (() => {
 /**
  * Everything is synthesized. No asset files means no licensing questions, no
  * load latency, and a meow whose pitch can track your progress for free.
+ *
+ * All voices run through a shared bus: a DynamicsCompressor glues layered
+ * sounds together, and an algorithmically-generated impulse response (no
+ * asset — just decaying noise) feeds a Convolver for a touch of room space.
+ * Individual sounds opt into that reverb with a `wet` send amount.
  */
 let ctx = null;
+let master = null;
+let reverb = null;
 let muted = false;
 
 function setMuted(value) { muted = value; }
 function isMuted() { return muted; }
+
+function impulseResponse(duration = 1.3, decay = 3) {
+  const rate = ctx.sampleRate;
+  const length = Math.floor(rate * duration);
+  const buffer = ctx.createBuffer(2, length, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** decay;
+  }
+  return buffer;
+}
+
+function buildBus() {
+  master = ctx.createGain();
+  master.gain.value = 0.9;
+
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -16;
+  compressor.knee.value = 14;
+  compressor.ratio.value = 3.5;
+  compressor.attack.value = 0.004;
+  compressor.release.value = 0.22;
+  master.connect(compressor).connect(ctx.destination);
+
+  reverb = ctx.createConvolver();
+  reverb.buffer = impulseResponse();
+  const reverbOut = ctx.createGain();
+  reverbOut.gain.value = 0.8;
+  reverb.connect(reverbOut).connect(master);
+}
 
 /** Browsers block audio until a user gesture — call this from the first one. */
 function unlock() {
@@ -3617,12 +3574,34 @@ function unlock() {
     const Ctor = window.AudioContext ?? window.webkitAudioContext;
     if (!Ctor) return;
     ctx = new Ctor();
+    buildBus();
   }
   if (ctx.state === 'suspended') ctx.resume();
 }
 
+/** Sends a finished node to the dry master bus, and optionally into the reverb. */
+function toMaster(node, wet = 0) {
+  node.connect(master);
+  if (wet > 0) {
+    const send = ctx.createGain();
+    send.gain.value = wet;
+    node.connect(send).connect(reverb);
+  }
+}
+
+function distortionCurve(amount) {
+  const n = 44100;
+  const curve = new Float32Array(n);
+  const deg = Math.PI / 180;
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
 /** Filtered white noise with a fast decay — the transient "pop"/"pssht" tones can't fake. */
-function noiseBurst({ dur = 0.12, gain = 0.22, filterFrom = 2200, filterTo = 700, q = 1.2, delay = 0 }) {
+function noiseBurst({ dur = 0.12, gain = 0.22, filterFrom = 2200, filterTo = 700, q = 1.2, delay = 0, wet = 0 } = {}) {
   if (!ctx || muted) return;
   const t = ctx.currentTime + delay;
 
@@ -3643,71 +3622,170 @@ function noiseBurst({ dur = 0.12, gain = 0.22, filterFrom = 2200, filterTo = 700
   amp.gain.setValueAtTime(gain, t);
   amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-  src.connect(filter).connect(amp).connect(ctx.destination);
+  src.connect(filter).connect(amp);
   src.start(t);
   src.stop(t + dur + 0.02);
+  toMaster(amp, wet);
 }
 
-function tone({ type = 'sawtooth', from, to, dur, gain = 0.14, filter = null, delay = 0 }) {
+/**
+ * type/from/to/dur/gain: as before. filter: a bandpass frequency, or an array
+ * of frequencies to sum as parallel formants (vocal-like coloring). vibrato:
+ * {rate, depth} wobbles pitch via an LFO. unison: {cents, gain} layers a
+ * second detuned voice for width/chorus. distortion: waveshaper drive amount.
+ */
+function tone({ type = 'sawtooth', from, to, dur, gain = 0.14, filter = null, delay = 0, wet = 0, vibrato = null, unison = null, distortion = 0 } = {}) {
   if (!ctx || muted) return;
   const t = ctx.currentTime + delay;
 
-  const osc = ctx.createOscillator();
-  osc.type = type;
-  osc.frequency.setValueAtTime(from, t);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+  const makeVoice = (detuneCents, gainScale) => {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+    if (detuneCents) osc.detune.setValueAtTime(detuneCents, t);
 
-  const amp = ctx.createGain();
-  amp.gain.setValueAtTime(0.0001, t);
-  amp.gain.exponentialRampToValueAtTime(gain, t + dur * 0.15);
-  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (vibrato) {
+      const lfo = ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = vibrato.rate ?? 6;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = vibrato.depth ?? 6;
+      lfo.connect(lfoGain).connect(osc.frequency);
+      lfo.start(t);
+      lfo.stop(t + dur + 0.05);
+    }
 
-  let node = osc;
+    const voiceAmp = ctx.createGain();
+    voiceAmp.gain.setValueAtTime(0.0001, t);
+    voiceAmp.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain * gainScale), t + dur * 0.15);
+    voiceAmp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(voiceAmp);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+    return voiceAmp;
+  };
+
+  const bus = ctx.createGain();
+  makeVoice(0, 1).connect(bus);
+  if (unison) makeVoice(unison.cents ?? 7, unison.gain ?? 0.5).connect(bus);
+
+  let node = bus;
   if (filter) {
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = filter;
-    bp.Q.value = 4;
-    node.connect(bp);
-    node = bp;
+    const freqs = Array.isArray(filter) ? filter : [filter];
+    const sum = ctx.createGain();
+    for (const f of freqs) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f;
+      bp.Q.value = 4;
+      node.connect(bp).connect(sum);
+    }
+    node = sum;
   }
-  node.connect(amp).connect(ctx.destination);
+  if (distortion > 0) {
+    const ws = ctx.createWaveShaper();
+    ws.curve = distortionCurve(distortion);
+    ws.oversample = '2x';
+    node.connect(ws);
+    node = ws;
+  }
+  toMaster(node, wet);
+}
 
+/** A soft low-frequency knock — the physical "weight" a pure tone can't sell. */
+function thump({ freq = 90, dur = 0.16, gain = 0.3, delay = 0, wet = 0 } = {}) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(1, freq * 0.5), t + dur);
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(gain, t);
+  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(amp);
   osc.start(t);
-  osc.stop(t + dur + 0.05);
+  osc.stop(t + dur + 0.02);
+  toMaster(amp, wet);
+}
+
+/** A scatter of tiny bell blips at random times/pitches — festive shimmer. */
+function sparkle({ count = 5, window = 0.4, freqRange = [1800, 3400], dur = 0.12, gain = 0.09, wet = 0.25 } = {}) {
+  if (!ctx || muted) return;
+  for (let i = 0; i < count; i++) {
+    const delay = Math.random() * window;
+    const freq = freqRange[0] + Math.random() * (freqRange[1] - freqRange[0]);
+    tone({ type: 'sine', from: freq, to: freq * 0.6, dur, gain: gain * (0.7 + Math.random() * 0.6), delay, wet });
+  }
+}
+
+/** A scatter of tiny filtered noise clicks — paper-flutter texture. */
+function crackle({ count = 8, window = 0.4, gain = 0.12, wet = 0.15 } = {}) {
+  if (!ctx || muted) return;
+  for (let i = 0; i < count; i++) {
+    const delay = Math.random() * window;
+    const f0 = 2000 + Math.random() * 3000;
+    noiseBurst({ dur: 0.02 + Math.random() * 0.02, gain: gain * (0.6 + Math.random() * 0.8), filterFrom: f0, filterTo: f0 * 0.4, q: 2, delay, wet });
+  }
 }
 
 const sfx = {
-  // Two swept sawtooths through a bandpass: up then down is the shape of a
-  // cartoon meow. Pitch rises with each cat found, so progress is audible.
+  // A breathy layer under two swept, formant-filtered, vibrato'd voices —
+  // the noise sells "voice," the twin bandpass formants sell "cat," and the
+  // up-then-down sweep is the shape of a cartoon meow. Pitch rises with each
+  // cat found, so progress is audible.
   meow(found = 0, total = 8) {
     const base = 360 * (1 + 0.5 * (found / Math.max(1, total)));
-    tone({ from: base, to: base * 1.5, dur: 0.16, filter: 950, gain: 0.16 });
-    tone({ from: base * 1.4, to: base * 0.8, dur: 0.24, filter: 780, gain: 0.13, delay: 0.14 });
+    noiseBurst({ dur: 0.14, gain: 0.05, filterFrom: 1400, filterTo: 2600, q: 0.7, wet: 0.12 });
+    tone({ type: 'sawtooth', from: base, to: base * 1.5, dur: 0.16, filter: [820, 1900], gain: 0.15, vibrato: { rate: 7, depth: 10 }, wet: 0.15 });
+    tone({ type: 'sawtooth', from: base * 1.4, to: base * 0.8, dur: 0.26, filter: [720, 1650], gain: 0.12, vibrato: { rate: 6, depth: 14 }, delay: 0.13, wet: 0.18 });
   },
   mark() {
+    noiseBurst({ dur: 0.02, gain: 0.05, filterFrom: 3500, filterTo: 2000, q: 2 });
     tone({ type: 'square', from: 200, to: 130, dur: 0.045, gain: 0.04 });
   },
+  // A low thump for impact, two detuned voices beating against each other
+  // for dissonance, and a little waveshaper grit — the shape of "wrong."
   strike() {
-    tone({ type: 'sawtooth', from: 170, to: 48, dur: 0.42, gain: 0.22 });
-    tone({ type: 'square', from: 90, to: 40, dur: 0.3, gain: 0.1, delay: 0.02 });
+    thump({ freq: 85, dur: 0.12, gain: 0.22 });
+    tone({ type: 'sawtooth', from: 172, to: 46, dur: 0.4, gain: 0.16, unison: { cents: 34, gain: 0.7 }, distortion: 14, wet: 0.12 });
+    tone({ type: 'square', from: 92, to: 40, dur: 0.28, gain: 0.08, delay: 0.02, distortion: 10 });
   },
+  // Each arpeggio note gets an octave-up shimmer voice and a hint of chorus
+  // detune; a held final chord rings out through the reverb; sparkle on top
+  // makes it feel like confetti of its own.
   win() {
-    [0, 0.13, 0.26, 0.42].forEach((d, i) => {
-      tone({ type: 'triangle', from: 420 * (1 + i * 0.22), to: 640 * (1 + i * 0.22), dur: 0.3, gain: 0.12, delay: d });
+    const notes = [0, 0.13, 0.26, 0.42];
+    notes.forEach((d, i) => {
+      const f = 420 * (1 + i * 0.22);
+      tone({ type: 'triangle', from: f, to: f * 1.5, dur: 0.32, gain: 0.11, unison: { cents: 7, gain: 0.45 }, wet: 0.28, delay: d });
+      tone({ type: 'sine', from: f * 2, to: f * 3, dur: 0.3, gain: 0.045, wet: 0.28, delay: d });
     });
+    [1, 1.25, 1.5].forEach((mult) => {
+      tone({ type: 'triangle', from: 420 * mult * 1.9, to: 420 * mult * 1.95, dur: 0.9, gain: 0.07, wet: 0.4, delay: 0.42 });
+    });
+    sparkle({ count: 6, window: 0.7, gain: 0.08, wet: 0.3 });
   },
+  // A detuned pair beating slowly against each other for melancholy, a soft
+  // distortion for grit, and a deflating noise tail.
   lose() {
-    tone({ type: 'sawtooth', from: 240, to: 60, dur: 0.9, gain: 0.18, filter: 500 });
+    tone({ type: 'sawtooth', from: 240, to: 60, dur: 0.9, gain: 0.15, filter: 500, distortion: 8, wet: 0.2 });
+    tone({ type: 'sawtooth', from: 226, to: 56, dur: 0.9, gain: 0.08, delay: 0.03, wet: 0.2 });
+    noiseBurst({ dur: 0.5, gain: 0.06, filterFrom: 900, filterTo: 200, q: 0.6, delay: 0.1, wet: 0.15 });
   },
   hint() {
-    tone({ type: 'triangle', from: 620, to: 880, dur: 0.16, gain: 0.1 });
+    tone({ type: 'triangle', from: 620, to: 880, dur: 0.16, gain: 0.09, wet: 0.2 });
+    tone({ type: 'sine', from: 1240, to: 1760, dur: 0.14, gain: 0.045, delay: 0.03, wet: 0.25 });
   },
-  // Party popper: a filtered noise burst (the "pssht") layered with a fast
-  // downward click (the "pop" transient) — no single oscillator sells it.
+  // Party popper: the original noise "pssht" + downward click "pop," plus a
+  // scatter of paper-flutter crackle and bell sparkle so it reads as a burst
+  // rather than a single blip.
   confetti() {
-    noiseBurst({ dur: 0.1, gain: 0.3, filterFrom: 3400, filterTo: 900, q: 0.9 });
-    tone({ type: 'square', from: 950, to: 210, dur: 0.07, gain: 0.11 });
+    noiseBurst({ dur: 0.1, gain: 0.28, filterFrom: 3400, filterTo: 900, q: 0.9, wet: 0.15 });
+    tone({ type: 'square', from: 950, to: 210, dur: 0.07, gain: 0.1 });
+    crackle({ count: 9, window: 0.45, gain: 0.1, wet: 0.15 });
+    sparkle({ count: 5, window: 0.5, gain: 0.075, wet: 0.3 });
   }
 };
 
@@ -3719,8 +3797,41 @@ function play(name, ...args) {
 return { setMuted, isMuted, unlock, play };
 })();
 
+const $haptics = (() => {
+/**
+ * Vibration patterns that mirror the sound effects in audio.js, event for
+ * event. Android Chrome supports the Vibration API; iOS Safari and desktop
+ * simply have no navigator.vibrate, so play() is a silent no-op there.
+ */
+let muted = false;
+
+function setMuted(value) { muted = value; }
+
+const supported = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+
+const patterns = {
+  mark: 8,
+  meow: [16, 40, 24],
+  strike: [45, 35, 45],
+  win: [20, 40, 20, 40, 70],
+  lose: 220,
+  hint: 12,
+  confetti: [15, 35, 15, 35, 15]
+};
+
+function play(name) {
+  if (!supported || muted) return;
+  const pattern = patterns[name];
+  if (pattern == null) return;
+  navigator.vibrate(pattern);
+}
+
+return { setMuted, play };
+})();
+
 const $confetti = (() => {
 const audio = $audio;
+const haptics = $haptics;
 // Confetti burst for the about dialog, rendered with three.js (loaded from
 // CDN via the importmap in index.html, see docs/plans/2026-08-03-about-panel-confetti-design.md).
 //
@@ -3731,6 +3842,7 @@ const audio = $audio;
 // position:fixed child of the dialog escapes the dialog's own box (nothing
 // between it and the dialog has a transform at rest) and still lives in the
 // dialog's top-layer subtree, giving a true full-viewport overlay.
+
 
 
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -3769,6 +3881,7 @@ async function celebrateAbout(dialogEl) {
   if (!dialogEl.open) return; // closed again while we were waiting
 
   audio.play('confetti');
+  haptics.play('confetti');
 
   const canvas = document.createElement('canvas');
   canvas.className = 'confetti-canvas';
@@ -3916,25 +4029,6 @@ const RULES = {
 const hintLine = (row, col, rule) =>
   `שורה ${row}, עמודה ${col} — ${RULES[rule] ?? RULES.R1}.`;
 
-/** Why the *previous* cell in this line/colour was ruled out — the one fact
- *  that closed the hinted cell down to being the only option left. */
-const HINT_RELATION = {
-  row: 'באותה שורה',
-  col: 'באותה עמודה',
-  region: 'באותו צבע',
-  neighbor: 'צמוד אליה'
-};
-
-const hintExplainLine = (row, col, explain) => {
-  if (!explain) return '';
-  if (explain.kind === 'propagate') {
-    const rel = HINT_RELATION[explain.relation] ?? HINT_RELATION.neighbor;
-    return `האפשרות האחרונה שנשארה שם נפסלה כי כבר יש נועם ${rel} — ` +
-      `בשורה ${row}, עמודה ${col}.`;
-  }
-  return `לפני כן, ${RULES[explain.rule] ?? RULES.R1}.`;
-};
-
 /** 1 and 2 read badly as digits mid-sentence; 3 ends the game, so it never gets here. */
 const MISTAKES = { 1: 'טעות אחת', 2: 'שתי טעויות' };
 
@@ -3956,7 +4050,9 @@ const postMortemLine = (row, col) =>
 
 const GENERATE_FAILED = 'לא הצלחנו לבנות חידה בגודל הזה. נסו שוב.';
 
-return { DIFFICULTY, RANKS, hintLine, hintExplainLine, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED };
+const CLEAR_CONFIRM = 'זה ימחק את הדירוג, הנקודות וההגדרות שלך לצמיתות. להמשיך?';
+
+return { DIFFICULTY, RANKS, hintLine, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, CLEAR_CONFIRM };
 })();
 
 (() => {
@@ -3971,7 +4067,9 @@ const { EXAMPLE } = $example;
 const fx = $effects;
 const confetti = $confetti;
 const audio = $audio;
+const haptics = $haptics;
 const t = $strings;
+
 
 
 
@@ -4039,6 +4137,7 @@ function renderAssists() {
   $('timer').hidden = !settings.timer;
   $('board').classList.toggle('show-glyphs', settings.glyphs);
   audio.setMuted(settings.muted);
+  haptics.setMuted(settings.muted);
   $('mute').setAttribute('aria-pressed', String(settings.muted));
   $('mute-glyph').textContent = settings.muted ? '✕' : '♪';
 }
@@ -4058,12 +4157,14 @@ function handleEvent(e) {
     case 'mark':
       if (e.to === MARK.X) {
         audio.play('mark');
+        haptics.play('mark');
         fx.markX(cells[e.cell]);
       }
       break;
     case 'cat': {
       const found = [...state.locked].filter(Boolean).length;
       audio.play('meow', found - 1, state.puzzle.n);
+      haptics.play('meow');
       fx.catPop(cells[e.cell]);
       break;
     }
@@ -4072,16 +4173,19 @@ function handleEvent(e) {
       break;
     case 'strike':
       audio.play('strike');
+      haptics.play('strike');
       fx.strikeShake($('board'), cells[e.cell]);
       renderPips();
       break;
     case 'win':
       audio.play('win');
+      haptics.play('win');
       fx.winCascade([...state.locked].map((v, i) => v ? cells[i] : null).filter(Boolean));
       setTimeout(finishWin, 700);
       break;
     case 'lose':
       audio.play('lose');
+      haptics.play('lose');
       setTimeout(finishLose, 550);
       break;
   }
@@ -4131,8 +4235,6 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
   $('meta-difficulty').textContent = t.DIFFICULTY[puzzle.difficulty] ?? '';
   $('timer').textContent = formatTime(elapsedSeconds());
   $('hint-text').hidden = true;
-  $('hint-explain-toggle').hidden = true;
-  $('hint-explain').hidden = true;
 
   renderAssists();
   renderPips();
@@ -4336,33 +4438,15 @@ $('hint').addEventListener('click', () => {
   focusCell = h.cell;
   hintCell = h.cell;
   audio.play('hint');
+  haptics.play('hint');
   $('hint-text').textContent = t.hintLine(
     rowOf(state.puzzle.n, h.cell) + 1,
     displayCol(state.puzzle.n, h.cell),
     h.rule
   );
   $('hint-text').hidden = false;
-
-  $('hint-explain').hidden = true;
-  $('hint-explain-toggle').textContent = 'הסבר את הרמז';
-  $('hint-explain-toggle').hidden = !h.explain;
-  if (h.explain) {
-    const ec = h.explain.cell;
-    $('hint-explain').textContent = t.hintExplainLine(
-      ec !== undefined ? rowOf(state.puzzle.n, ec) + 1 : null,
-      ec !== undefined ? displayCol(state.puzzle.n, ec) : null,
-      h.explain
-    );
-  }
-
   render(cells, state, { focusCell, hintCell });
   scheduleSave();
-});
-
-$('hint-explain-toggle').addEventListener('click', () => {
-  const willShow = $('hint-explain').hidden;
-  $('hint-explain').hidden = !willShow;
-  $('hint-explain-toggle').textContent = willShow ? 'הסתר את ההסבר' : 'הסבר את הרמז';
 });
 
 $('result-retry').addEventListener('click', () => {
@@ -4384,6 +4468,12 @@ $('open-settings').addEventListener('click', () => {
 });
 
 $('close-settings').addEventListener('click', () => $('settings').close());
+
+$('clear-storage').addEventListener('click', () => {
+  if (!confirm(t.CLEAR_CONFIRM)) return;
+  storage.clearAll();
+  location.reload();
+});
 
 $('open-howto').addEventListener('click', () => $('howto').showModal());
 $('close-howto').addEventListener('click', () => $('howto').close());
@@ -4444,6 +4534,11 @@ syncHiddenSelects();
 renderAssists();
 renderMenu();
 showScreen('menu');
+
+if (!storage.hasSeenHowto()) {
+  storage.markHowtoSeen();
+  $('howto').showModal();
+}
 
 // Used only by the smoke test, and only on localhost.
 if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
