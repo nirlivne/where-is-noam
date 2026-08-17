@@ -7,7 +7,7 @@
 // cache with no manual version bump. In dev (served unbundled via
 // tools/serve.js) it stays the literal placeholder below, which is fine —
 // it only needs to change, not mean anything.
-const CACHE_VERSION = 'b5b1e08058';
+const CACHE_VERSION = 'a5d9ebabed';
 const CACHE_NAME = `cats-${CACHE_VERSION}`;
 // three.js (confetti, loaded lazily from the jsdelivr CDN) lives in its own
 // cache so it survives app-shell cache rotations instead of being evicted
@@ -18,7 +18,13 @@ const PRECACHE = ['./index.html', './manifest.json', './assets/noam-192.png', '.
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      // 'reload' bypasses the browser's own HTTP cache — GitHub Pages sends
+      // Cache-Control: max-age=600, so without this a fresh install could
+      // silently precache a response the browser already had lying around
+      // from before this publish, instead of what actually just shipped.
+      .then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -59,8 +65,14 @@ self.addEventListener('fetch', (event) => {
   // publish (there is no other cache-busting scheme), falling back to the
   // cache when offline. Covers both the bundled single-file production
   // build and the unbundled multi-file dev server.
+  //
+  // cache: 'no-store' bypasses the browser's own HTTP cache layer — GitHub
+  // Pages sends Cache-Control: max-age=600, and a plain fetch() here would
+  // silently honour that and hand back a stale response for up to 10
+  // minutes, "network-first" in name only. We keep our own versioned
+  // CACHE_NAME as the real freshness/offline mechanism instead.
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-store' })
       .then((res) => {
         if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, res.clone()));
         return res;

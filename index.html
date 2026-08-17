@@ -137,6 +137,11 @@
      thinning them dissolves the whole style. */
   --edge:     3px;
   --hairline: 1px;
+  /* Cell grid line. Purely a between-cells divider (region shape now reads
+     from fill colour + lightness ramp, not from a border — see the #board
+     comment), so brightness here is a free aesthetic choice, not an
+     accessibility one. */
+  --grid-line: rgb(255 255 255 / .8);
   --pop:      4px;
   --pop-sm:   3px;
   --r-lg:     18px;
@@ -345,10 +350,10 @@ main {
 .segmented input { position: absolute; opacity: 0; pointer-events: none; }
 
 .segmented label {
-  padding: .55rem 1.05rem;
+  padding: .5rem .68rem;
   font-family: var(--display);
   font-weight: 800;
-  font-size: .95rem;
+  font-size: .88rem;
   cursor: pointer;
   border-inline-start: 2px solid var(--ink);
   transition: background .12s, color .12s;
@@ -446,7 +451,7 @@ main {
 .mini-grid div {
   aspect-ratio: 1;
   position: relative;
-  border: var(--hairline) solid rgb(0 0 0 / .16);
+  border: 2px solid var(--grid-line);
 }
 .mini-grid div.cat::after {
   content: '';
@@ -545,7 +550,7 @@ main {
   position: relative;
   background: var(--region-color);
   color: var(--region-ink);
-  border: var(--hairline) solid rgb(0 0 0 / .16);
+  border: 2px solid var(--grid-line);
   cursor: pointer;
 }
 
@@ -727,6 +732,13 @@ main {
   font-size: .82rem;
   font-weight: 500;
   color: #A08B6E;
+}
+.working-timer {
+  margin-inline-start: .35em;
+  font-family: var(--display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 .working-cancel { margin-top: 1.1rem; }
 
@@ -1056,7 +1068,10 @@ dialog.about .dialog-actions { justify-content: center; }
       <span class="working-cat" aria-hidden="true"></span>
       <p class="working-title">נועם מתחבא…</p>
       <p class="working-sub">אל תציצו</p>
-      <p class="working-note" id="working-note" hidden>לוחות גדולים לוקחים יותר זמן — אפשר להמשיך לחכות או לבטל.</p>
+      <p class="working-note" id="working-note" hidden>
+        לוחות גדולים לוקחים יותר זמן — אפשר להמשיך לחכות או לבטל.
+        <span class="working-timer" id="working-timer">0:00</span>
+      </p>
       <button class="btn working-cancel" id="working-cancel" type="button">ביטול</button>
     </div>
   </div>
@@ -4381,13 +4396,20 @@ async function newPuzzle() {
   $('working-note').hidden = true;
   // Large boards can take a long time to generate (a 12x12 board runs upward
   // of a minute) — only admit that once it's actually true, so a normal
-  // small-board generation never flashes the notice.
+  // small-board generation never flashes the notice. The timer next to it
+  // runs the whole time regardless, so once it's visible the wait is never
+  // a mystery.
+  const genStartedAt = Date.now();
+  const workingTimer = setInterval(() => {
+    $('working-timer').textContent = formatTime(Math.floor((Date.now() - genStartedAt) / 1000));
+  }, 250);
   const slowNoticeTimer = setTimeout(() => { $('working-note').hidden = false; }, 2500);
 
   genController = new AbortController();
   const { signal } = genController;
   const puzzle = await generateAsync(n, difficulty, (Math.random() * 2 ** 31) >>> 0, signal);
   clearTimeout(slowNoticeTimer);
+  clearInterval(workingTimer);
   genController = null;
 
   if (signal.aborted) {
