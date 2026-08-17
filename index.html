@@ -5,6 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#FFE9CC">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/noam-192.png">
 <title>איפה נועם?</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════
@@ -115,6 +117,8 @@
   --region-7: #A8E85A;  --region-7-ink: #16260A;  /* lime           */
   --region-8: #FF8A00;  --region-8-ink: #171512;  /* tangerine      */
   --region-9: #B9AFA4;  --region-9-ink: #171512;  /* stone          */
+  --region-10: #0E7C86; --region-10-ink: #FFFFFF; /* deep teal      */
+  --region-11: #D62839; --region-11-ink: #FFFFFF; /* crimson        */
 
   /* ── Surface ── */
   --ink:        #171512;   /* every keyline and every hard shadow  */
@@ -329,6 +333,8 @@ main {
 
 .segmented {
   display: inline-flex;
+  flex-wrap: wrap;
+  row-gap: var(--edge);
   border: var(--edge) solid var(--ink);
   border-radius: var(--r-md);
   background: var(--panel);
@@ -715,6 +721,14 @@ main {
   font-weight: 500;
   color: #A08B6E;
 }
+.working-note {
+  margin: .9rem 0 0;
+  max-width: 22rem;
+  font-size: .82rem;
+  font-weight: 500;
+  color: #A08B6E;
+}
+.working-cancel { margin-top: 1.1rem; }
 
 /* ───────────────────────────── dialogs ───────────────────────────── */
 
@@ -762,6 +776,8 @@ dialog.sheet[open] { animation: sheet-up .3s cubic-bezier(.22, .9, .32, 1.05); }
   margin: 0 auto .9rem;
   border-radius: 99px;
   background: rgb(23 21 18 / .16);
+  touch-action: none;
+  cursor: grab;
 }
 @media (min-width: 640px) {
   dialog.sheet {
@@ -971,10 +987,13 @@ dialog.about .dialog-actions { justify-content: center; }
           <input type="radio" name="size" id="size-8" value="8" checked><label for="size-8">8</label>
           <input type="radio" name="size" id="size-9" value="9"><label for="size-9">9</label>
           <input type="radio" name="size" id="size-10" value="10"><label for="size-10">10</label>
+          <input type="radio" name="size" id="size-11" value="11"><label for="size-11">11</label>
+          <input type="radio" name="size" id="size-12" value="12"><label for="size-12">12</label>
         </div>
         <select id="size" class="sr-only" tabindex="-1" aria-hidden="true">
           <option value="6">6</option><option value="7">7</option><option value="8" selected>8</option>
           <option value="9">9</option><option value="10">10</option>
+          <option value="11">11</option><option value="12">12</option>
         </select>
       </div>
 
@@ -1037,6 +1056,8 @@ dialog.about .dialog-actions { justify-content: center; }
       <span class="working-cat" aria-hidden="true"></span>
       <p class="working-title">נועם מתחבא…</p>
       <p class="working-sub">אל תציצו</p>
+      <p class="working-note" id="working-note" hidden>לוחות גדולים לוקחים יותר זמן — אפשר להמשיך לחכות או לבטל.</p>
+      <button class="btn working-cancel" id="working-cancel" type="button">ביטול</button>
     </div>
   </div>
 
@@ -1809,11 +1830,19 @@ const BANDS = {
   },
   "9": {
     "easyMax": 24,
-    "mediumMax": 36
+    "mediumMax": 38
   },
   "10": {
-    "easyMax": 28,
+    "easyMax": 27,
+    "mediumMax": 39
+  },
+  "11": {
+    "easyMax": 20,
     "mediumMax": 43
+  },
+  "12": {
+    "easyMax": 39,
+    "mediumMax": 67
   }
 };
 
@@ -2669,11 +2698,19 @@ const BANDS = {
   },
   "9": {
     "easyMax": 24,
-    "mediumMax": 36
+    "mediumMax": 38
   },
   "10": {
-    "easyMax": 28,
+    "easyMax": 27,
+    "mediumMax": 39
+  },
+  "11": {
+    "easyMax": 20,
     "mediumMax": 43
+  },
+  "12": {
+    "easyMax": 39,
+    "mediumMax": 67
   }
 };
 
@@ -2826,8 +2863,15 @@ const { makeRng } = $rng;
  *
  * A fresh Worker per puzzle: generation is a one-shot job, and this way a slow
  * or wedged run can simply be dropped.
+ *
+ * `signal` (optional AbortSignal) lets a caller cancel — large boards can take
+ * a long time (a 12x12 board runs upward of a minute), so the menu needs a
+ * way to give up and hand control back rather than just wait it out. An
+ * aborted run resolves to null, same shape as "generation failed", but the
+ * caller must check `signal.aborted` to tell the two apart before surfacing
+ * the failure alert.
  */
-function generateAsync(n, difficulty, seed) {
+function generateAsync(n, difficulty, seed, signal) {
   return new Promise((resolve) => {
     let worker;
     try {
@@ -2837,14 +2881,23 @@ function generateAsync(n, difficulty, seed) {
       return;
     }
 
-    const done = (value) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
       worker.terminate();
       resolve(value);
     };
 
-    worker.onmessage = (e) => done(e.data.ok ? e.data.puzzle : null);
+    signal?.addEventListener('abort', () => finish(null), { once: true });
+
+    worker.onmessage = (e) => finish(e.data.ok ? e.data.puzzle : null);
     worker.onerror = () => {
-      // Module workers are unsupported in a few browsers; do it inline instead.
+      // Module workers are unsupported in a few browsers; do it inline instead
+      // — unless the run was already cancelled, in which case don't pay for a
+      // synchronous main-thread generation nobody asked for anymore.
+      if (settled) { worker.terminate(); return; }
+      settled = true;
       worker.terminate();
       resolve(generate(n, difficulty, makeRng(seed)));
     };
@@ -3266,12 +3319,16 @@ const KEYS = {
   points: 'cats.points',
   best: 'cats.best',
   save: 'cats.save',
-  seenHowto: 'cats.seenHowto'
+  seenHowto: 'cats.seenHowto',
+  lastConfig: 'cats.lastConfig'
 };
 
 const DEFAULT_SETTINGS = {
   autoX: true, timer: true, undo: false, hint: true, glyphs: false, muted: false
 };
+
+// Mirrors the "checked" defaults baked into the size/difficulty radios in index.html.
+const DEFAULT_CONFIG = { n: 8, difficulty: 'easy' };
 
 /**
  * The backing store is injected rather than reached for, so this is testable in
@@ -3330,6 +3387,9 @@ function makeStorage(store = globalThis.localStorage) {
     hasSeenHowto: () => read(KEYS.seenHowto, false),
     markHowtoSeen: () => write(KEYS.seenHowto, true),
 
+    getLastConfig: () => ({ ...DEFAULT_CONFIG, ...read(KEYS.lastConfig, {}) }),
+    setLastConfig: (c) => write(KEYS.lastConfig, c),
+
     clearAll: () => {
       for (const key of Object.values(KEYS)) {
         try { store.removeItem(key); } catch { /* ignore */ }
@@ -3338,7 +3398,7 @@ function makeStorage(store = globalThis.localStorage) {
   };
 }
 
-return { DEFAULT_SETTINGS, makeStorage };
+return { DEFAULT_SETTINGS, DEFAULT_CONFIG, makeStorage };
 })();
 
 const $score = (() => {
@@ -3810,13 +3870,13 @@ function setMuted(value) { muted = value; }
 const supported = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
 const patterns = {
-  mark: 8,
-  meow: [16, 40, 24],
-  strike: [45, 35, 45],
-  win: [20, 40, 20, 40, 70],
-  lose: 220,
-  hint: 12,
-  confetti: [15, 35, 15, 35, 15]
+  mark: 16,
+  meow: [26, 55, 34],
+  strike: [70, 45, 70],
+  win: [32, 55, 32, 55, 110],
+  lose: 300,
+  hint: 20,
+  confetti: [24, 45, 24, 45, 24]
 };
 
 function play(name) {
@@ -3993,6 +4053,71 @@ function stopCelebration() {
 return { celebrateAbout, stopCelebration };
 })();
 
+const $sheetDrag = (() => {
+/**
+ * Drag-down-to-close for bottom sheets. Only the handle bar is grabbable —
+ * dragging from the body would fight with scrolling sheet content (e.g. the
+ * settings toggle list). No-op on desktop, where the handle is display:none.
+ */
+const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+function attachSheetDrag(dialogEl) {
+  const handle = dialogEl?.querySelector('.sheet-handle');
+  if (!handle) return;
+
+  let dragging = false;
+  let startY = 0;
+  let dragY = 0;
+
+  const reset = () => { dialogEl.style.transform = ''; };
+  dialogEl.addEventListener('close', reset);
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dragging = true;
+    startY = e.clientY;
+    dragY = 0;
+    handle.setPointerCapture(e.pointerId);
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    dragY = Math.max(0, e.clientY - startY);
+    dialogEl.style.transform = `translateY(${dragY}px)`;
+  });
+
+  const release = () => {
+    if (!dragging) return;
+    dragging = false;
+
+    const threshold = Math.max(72, dialogEl.getBoundingClientRect().height * .25);
+
+    if (dragY < threshold) {
+      if (REDUCED) { reset(); return; }
+      // No fill:'forwards' — the animation must fully hand off to reset()
+      // in onfinish, or it keeps overriding style.transform forever and
+      // silently blocks every future drag/reset on this dialog.
+      dialogEl.animate(
+        [{ transform: `translateY(${dragY}px)` }, { transform: 'translateY(0)' }],
+        { duration: 220, easing: 'cubic-bezier(.22,.9,.32,1.05)' }
+      ).onfinish = reset;
+      return;
+    }
+
+    if (REDUCED) { dialogEl.close(); return; }
+    dialogEl.animate(
+      [{ transform: `translateY(${dragY}px)` }, { transform: 'translateY(100%)' }],
+      { duration: 180, easing: 'ease-in' }
+    ).onfinish = () => dialogEl.close();
+  };
+
+  handle.addEventListener('pointerup', release);
+  handle.addEventListener('pointercancel', release);
+}
+
+return { attachSheetDrag };
+})();
+
 const $strings = (() => {
 /**
  * Every user-visible string the app builds at runtime. The static copy lives in
@@ -4068,7 +4193,9 @@ const fx = $effects;
 const confetti = $confetti;
 const audio = $audio;
 const haptics = $haptics;
+const { attachSheetDrag } = $sheetDrag;
 const t = $strings;
+
 
 
 
@@ -4095,6 +4222,7 @@ let elapsedBase = 0;   // seconds carried over from a resumed game
 let tick = null;
 let saveTimer = null;
 let holdAnim = null;
+let genController = null; // AbortController for an in-flight generateAsync, or null
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -4250,8 +4378,22 @@ async function newPuzzle() {
   const difficulty = document.querySelector('input[name=difficulty]:checked').value;
 
   showScreen('working');
-  const puzzle = await generateAsync(n, difficulty, (Math.random() * 2 ** 31) >>> 0);
+  $('working-note').hidden = true;
+  // Large boards can take a long time to generate (a 12x12 board runs upward
+  // of a minute) — only admit that once it's actually true, so a normal
+  // small-board generation never flashes the notice.
+  const slowNoticeTimer = setTimeout(() => { $('working-note').hidden = false; }, 2500);
 
+  genController = new AbortController();
+  const { signal } = genController;
+  const puzzle = await generateAsync(n, difficulty, (Math.random() * 2 ** 31) >>> 0, signal);
+  clearTimeout(slowNoticeTimer);
+  genController = null;
+
+  if (signal.aborted) {
+    showScreen('menu');
+    return;
+  }
   if (!puzzle) {
     showScreen('menu');
     alert(t.GENERATE_FAILED);
@@ -4395,17 +4537,35 @@ function syncHiddenSelects() {
   $('difficulty').value = document.querySelector('input[name=difficulty]:checked').value;
 }
 
+// The last size/difficulty picked becomes the default next time the menu loads.
+function applyLastConfig() {
+  const { n, difficulty } = storage.getLastConfig();
+  const sizeRadio = document.querySelector(`input[name=size][value="${n}"]`);
+  const diffRadio = document.querySelector(`input[name=difficulty][value="${difficulty}"]`);
+  if (sizeRadio) sizeRadio.checked = true;
+  if (diffRadio) diffRadio.checked = true;
+}
+
+function persistConfig() {
+  storage.setLastConfig({
+    n: Number(document.querySelector('input[name=size]:checked').value),
+    difficulty: document.querySelector('input[name=difficulty]:checked').value
+  });
+}
+
 document.querySelectorAll('input[name=size], input[name=difficulty]')
-  .forEach(el => el.addEventListener('change', syncHiddenSelects));
+  .forEach(el => el.addEventListener('change', () => { syncHiddenSelects(); persistConfig(); }));
 
 for (const [selectId, radioName] of [['size', 'size'], ['difficulty', 'difficulty']]) {
   $(selectId).addEventListener('change', (e) => {
     const radio = document.querySelector(`input[name=${radioName}][value="${e.target.value}"]`);
     if (radio) radio.checked = true;
+    persistConfig();
   });
 }
 
 $('new-game').addEventListener('click', newPuzzle);
+$('working-cancel').addEventListener('click', () => genController?.abort());
 
 $('resume').addEventListener('click', () => {
   const saved = storage.loadGame();
@@ -4487,6 +4647,7 @@ $('about').addEventListener('close', () => confetti.stopCelebration());
 // it hits the backdrop, since the visible card is a nested box.
 for (const id of ['settings', 'howto', 'about']) {
   $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).close(); });
+  attachSheetDrag($(id));
 }
 
 for (const key of ['autoX', 'timer', 'undo', 'hint', 'glyphs', 'muted']) {
@@ -4530,6 +4691,7 @@ function buildMiniDiagram() {
 
 attachInput($('board'), handlers);
 buildMiniDiagram();
+applyLastConfig();
 syncHiddenSelects();
 renderAssists();
 renderMenu();
@@ -4548,6 +4710,13 @@ if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
 }
 
 })();
+</script>
+<script>
+// Kept as a plain inline script (not inside js/main.js) so 'sw.js' resolves
+// relative to this document in both dev (repo root) and the single-file
+// dist/index.html build — from inside an ES module under js/ it would
+// instead resolve relative to that module's own URL and 404.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
 </html>
