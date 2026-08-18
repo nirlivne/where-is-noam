@@ -740,6 +740,35 @@ main {
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
+.working-progress {
+  width: 14rem;
+  max-width: 70vw;
+  height: .55rem;
+  margin: .9rem auto 0;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.working-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width .2s linear;
+}
+/* No timing history yet for this size — an honest percentage isn't
+   possible on the first run, so slide instead of guessing a number. */
+.working-progress.is-indeterminate .working-progress-fill {
+  width: 35%;
+  transition: none;
+  animation: working-progress-slide 1.1s ease-in-out infinite;
+}
+@keyframes working-progress-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(285%); }
+}
+
 .working-cancel { margin-top: 1.1rem; }
 
 /* ───────────────────────────── dialogs ───────────────────────────── */
@@ -1072,6 +1101,9 @@ dialog.about .dialog-actions { justify-content: center; }
         לוחות גדולים לוקחים יותר זמן — אפשר להמשיך לחכות או לבטל.
         <span class="working-timer" id="working-timer">0:00</span>
       </p>
+      <div class="working-progress" id="working-progress" hidden>
+        <div class="working-progress-fill" id="working-progress-fill"></div>
+      </div>
       <button class="btn working-cancel" id="working-cancel" type="button">ביטול</button>
     </div>
   </div>
@@ -3335,7 +3367,8 @@ const KEYS = {
   best: 'cats.best',
   save: 'cats.save',
   seenHowto: 'cats.seenHowto',
-  lastConfig: 'cats.lastConfig'
+  lastConfig: 'cats.lastConfig',
+  genTiming: 'cats.genTiming'
 };
 
 const DEFAULT_SETTINGS = {
@@ -3404,6 +3437,18 @@ function makeStorage(store = globalThis.localStorage) {
 
     getLastConfig: () => ({ ...DEFAULT_CONFIG, ...read(KEYS.lastConfig, {}) }),
     setLastConfig: (c) => write(KEYS.lastConfig, c),
+
+    // How long generation actually took last time, on this device, for this
+    // size+difficulty — generation cost varies wildly by board size (and by
+    // device speed) and there is no way to predict it in advance, so the
+    // "working" screen's progress bar estimates against this instead of a
+    // fixed guess. Null until there's at least one real sample.
+    getGenTiming: (n, difficulty) => read(KEYS.genTiming, {})[`${n}.${difficulty}`] ?? null,
+    recordGenTiming: (n, difficulty, ms) => {
+      const all = read(KEYS.genTiming, {});
+      all[`${n}.${difficulty}`] = ms;
+      write(KEYS.genTiming, all);
+    },
 
     clearAll: () => {
       for (const key of Object.values(KEYS)) {
@@ -4394,20 +4439,41 @@ async function newPuzzle() {
 
   showScreen('working');
   $('working-note').hidden = true;
-  // Large boards can take a long time to generate (a 12x12 board runs upward
-  // of a minute) — only admit that once it's actually true, so a normal
-  // small-board generation never flashes the notice. The timer next to it
-  // runs the whole time regardless, so once it's visible the wait is never
-  // a mystery.
+  $('working-progress').hidden = true;
+
+  // Generation cost varies enormously by board size (and by device speed —
+  // a 12x12 board runs upward of a minute, more on a phone), with no way to
+  // predict it up front. Rather than guess, estimate against how long it
+  // actually took last time on THIS device for this size+difficulty —
+  // recorded below once we know it. First time at a given size there's no
+  // history yet, so the bar slides instead of showing a made-up percentage.
+  const estimateMs = storage.getGenTiming(n, difficulty);
+  $('working-progress').classList.toggle('is-indeterminate', estimateMs == null);
+  $('working-progress-fill').style.width = '0%';
+
+  // Large boards can take a long time to generate — only admit that once
+  // it's actually true, so a normal small-board generation never flashes
+  // the notice. The timer and progress bar next to it run the whole time
+  // regardless, so once they're visible the wait is never a mystery.
   const genStartedAt = Date.now();
   const workingTimer = setInterval(() => {
-    $('working-timer').textContent = formatTime(Math.floor((Date.now() - genStartedAt) / 1000));
+    const elapsedMs = Date.now() - genStartedAt;
+    $('working-timer').textContent = formatTime(Math.floor(elapsedMs / 1000));
+    if (estimateMs != null) {
+      // Never quite reach 100% before the real result lands — actual
+      // duration always drifts a bit from last time's sample.
+      $('working-progress-fill').style.width = `${Math.min(96, (elapsedMs / estimateMs) * 100)}%`;
+    }
   }, 250);
-  const slowNoticeTimer = setTimeout(() => { $('working-note').hidden = false; }, 2500);
+  const slowNoticeTimer = setTimeout(() => {
+    $('working-note').hidden = false;
+    $('working-progress').hidden = false;
+  }, 2500);
 
   genController = new AbortController();
   const { signal } = genController;
   const puzzle = await generateAsync(n, difficulty, (Math.random() * 2 ** 31) >>> 0, signal);
+  const tookMs = Date.now() - genStartedAt;
   clearTimeout(slowNoticeTimer);
   clearInterval(workingTimer);
   genController = null;
@@ -4421,6 +4487,7 @@ async function newPuzzle() {
     alert(t.GENERATE_FAILED);
     return;
   }
+  storage.recordGenTiming(n, difficulty, tookMs);
   storage.clearGame();
   beginGame(puzzle);
 }
