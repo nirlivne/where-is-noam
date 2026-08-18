@@ -4376,7 +4376,7 @@ const PLANE_FACTS = [
   'ידעת? כנפי ג׳מבו רחבות כמו מגרש כדורגל…'
 ];
 
-const WORKING_PHRASES = [...HIDING_PHRASES, ...PLANE_FACTS];
+const WORKING_PHRASES = [...HIDING_PHRASES];  // /** , ...PLANE_FACTS  */
 
 /** A random phrase, never repeating the one just shown. */
 const nextWorkingPhrase = (prev) => {
@@ -4635,13 +4635,13 @@ async function newPuzzle() {
     $('working-phrase').textContent = lastPhrase;
   };
   const slowNoticeTimer = setTimeout(() => {
-    $('working-note').hidden = false;
+    /** $('working-note').hidden = false; */
     $('working-balloon').hidden = false;
     showPhrase();
-  }, 5000);
+  }, 500);  /** 5000 */
   const phraseTimer = setInterval(() => {
     if (!$('working-balloon').hidden) showPhrase();
-  }, 2400);
+  }, 2000);
 
   genController = new AbortController();
   const { signal } = genController;
