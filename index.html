@@ -718,25 +718,34 @@ main {
   50%      { transform: translateY(-11px) rotate(5deg); }
 }
 /* The balloon is a comic thought-bubble on the cat itself, rather than a
-   separate progress widget — it carries the one honest signal generation
-   has (see generateAsync's onProgress doc: attempts, not a fraction of a
-   predictable total) right at the thing that's "thinking". */
+   separate progress widget — a new little line every couple of seconds
+   (strings.js's WORKING_PHRASES) reads as Noam narrating the search, which
+   carries "still alive" far better than a numeric attempt count ever did.
+   The real numbers still exist, just tucked into .working-dev below. */
 .working-balloon {
   position: absolute;
   bottom: calc(100% + 14px);
-  inset-inline-end: -.5rem;
-  min-width: 3.4rem;
-  padding: .3rem .7rem;
+  /* Centered over the head rather than end-anchored — the tail (below)
+     lands on the top-center of the avatar regardless of balloon width. */
+  inset-inline: 0;
+  margin-inline: auto;
+  /* .working-stage only sizes itself to the cat (the balloon is out of
+     flow), so shrink-to-fit here would resolve against that tiny box
+     instead of the phrase text. An explicit width sidesteps it. */
+  width: max-content;
+  max-width: 12rem;
+  padding: .35rem .75rem;
   background: var(--panel);
   border: var(--edge) solid var(--ink);
   border-radius: var(--r-md);
   box-shadow: var(--pop-sm) var(--pop-sm) 0 var(--ink);
-  font-family: var(--num);
-  font-weight: 800;
-  font-size: .8rem;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--ui);
+  font-weight: 700;
+  font-size: .78rem;
+  line-height: 1.3;
   color: var(--ink);
-  white-space: nowrap;
+  text-align: center;
+  text-wrap: pretty;
   transform-origin: bottom center;
   animation:
     balloon-pop .3s cubic-bezier(.34, 1.56, .64, 1) both,
@@ -746,7 +755,12 @@ main {
   content: '';
   position: absolute;
   top: 100%;
-  inset-inline-start: 1.1rem;
+  /* Centered independently of the differing border-widths below, so the
+     tail lands under the balloon's midpoint regardless of its (variable,
+     max-content) width — which is also the horizontal center of the head,
+     since the balloon itself is centered over .working-stage. */
+  left: 50%;
+  transform: translateX(-50%);
   border-style: solid;
 }
 .working-balloon::after {
@@ -787,21 +801,25 @@ main {
   font-weight: 500;
   color: #A08B6E;
 }
-.working-timer {
-  display: inline-block;
-  margin-top: .6rem;
-  padding: .22rem .75rem;
-  font-family: var(--num);
-  font-weight: 800;
-  font-size: .85rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  background: var(--panel);
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-}
-
 .working-cancel { margin-top: 1.1rem; }
+
+/* Time + raw attempt count, for whoever's watching this screen with a
+   developer hat on. Deliberately quiet: small, low-contrast, pinned to the
+   bottom edge, out of the way of the actual "still working" narration
+   above. Always on — unlike the balloon it never needs to earn its place,
+   since a normal-length wait just makes it a faint, ignorable footnote. */
+.working-dev {
+  position: absolute;
+  inset-inline: 0;
+  bottom: .7rem;
+  text-align: center;
+  font-family: var(--num);
+  font-size: .65rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  color: rgb(var(--ink-rgb) / .3);
+  pointer-events: none;
+}
 
 /* ───────────────────────────── dialogs ───────────────────────────── */
 
@@ -933,14 +951,6 @@ dialog.about .dialog-actions { justify-content: center; }
 }
 .toggles span { font-size: .95rem; font-weight: 700; }
 .toggles em { font-size: .78rem; line-height: 1.35; font-style: normal; color: var(--chrome); text-wrap: pretty; }
-.toggles-divider {
-  padding: .8rem .1rem .1rem;
-  font-size: .7rem;
-  font-weight: 700;
-  letter-spacing: .1em;
-  color: var(--chrome);
-}
-.toggles-divider + li { border-top: 0; }
 
 .score-block {
   display: flex; align-items: baseline; gap: .5rem;
@@ -1113,7 +1123,6 @@ dialog.about .dialog-actions { justify-content: center; }
       </div>
 
       <div class="status-tools">
-        <button class="btn btn-small" id="undo" type="button" hidden>בטל</button>
         <button class="btn btn-small" id="hint" type="button" hidden>רמז</button>
       </div>
     </div>
@@ -1137,7 +1146,7 @@ dialog.about .dialog-actions { justify-content: center; }
       <div class="working-stage">
         <span class="working-cat" aria-hidden="true"></span>
         <div class="working-balloon" id="working-balloon" hidden>
-          <span id="working-attempts"></span>
+          <span id="working-phrase"></span>
         </div>
       </div>
       <p class="working-title">נועם מתחבא…</p>
@@ -1145,9 +1154,13 @@ dialog.about .dialog-actions { justify-content: center; }
       <p class="working-note" id="working-note" hidden>
         לוחות גדולים לוקחים יותר זמן — אפשר להמשיך לחכות או לבטל.
       </p>
-      <span class="working-timer" id="working-timer" hidden>0:00</span>
       <button class="btn working-cancel" id="working-cancel" type="button">ביטול</button>
     </div>
+    <!-- Dev-only telemetry, not narration — tiny, muted, always on, sits at
+         the very bottom out of the way. See working-balloon for the copy
+         players actually see. -->
+    <span class="working-dev" id="working-dev" aria-hidden="true"></span>
+  </div>
   </div>
 
 </main>
@@ -1159,14 +1172,9 @@ dialog.about .dialog-actions { justify-content: center; }
   <p class="dialog-sub">רוב העזרים דולקים כברירת מחדל — אפשר לכבות כל אחד בנפרד.</p>
   <ul class="toggles">
     <li><label><input type="checkbox" id="set-autoX"><span>סימון אוטומטי</span><em>מסמן את השורה, העמודה, הצבע והשכנים של נועם שנמצא</em></label></li>
-    <li><label><input type="checkbox" id="set-timer"><span>שעון</span><em>הצגת הזמן במהלך המשחק</em></label></li>
-    <li><label><input type="checkbox" id="set-undo"><span>ביטול פעולה</span><em>חזרה אחורה על הסימונים</em></label></li>
-    <li><label><input type="checkbox" id="set-hint"><span>רמזים</span><em>חינם, אבל משחק עם רמז שווה חצי ולא נשמר כשיא</em></label></li>
     <li><label><input type="checkbox" id="set-glyphs"><span>מספרי צבעים</span><em>הדפסת מספר הצבע בפינת המשבצת</em></label></li>
     <li><label><input type="checkbox" id="set-muted"><span>השתקה</span><em>כיבוי כל הצלילים</em></label></li>
-    <li class="toggles-divider">ניסיוני</li>
-    <li><label><input type="checkbox" id="set-size11"><span>לוח 11×11</span><em>יצירת החידה עלולה לקחת יותר זמן</em></label></li>
-    <li><label><input type="checkbox" id="set-size12"><span>לוח 12×12</span><em>יצירת החידה עלולה לקחת כמה דקות</em></label></li>
+    <li><label><input type="checkbox" id="set-experimental"><span>ניסיוני</span><em>לוחות 11×11 ו-12×12 — יצירת החידה עלולה לקחת יותר זמן</em></label></li>
   </ul>
   <div class="dialog-actions">
     <button class="btn btn-small btn-danger" id="clear-storage" type="button">נקה את כל הנתונים</button>
@@ -3472,10 +3480,14 @@ const KEYS = {
 };
 
 const DEFAULT_SETTINGS = {
+  // timer, hint and undo have no settings UI (see index.html) — timer and
+  // hint are always on, undo is always off — but stay here so the code that
+  // reads them doesn't need special-casing.
   autoX: true, timer: true, undo: false, hint: true, glyphs: false, muted: false,
-  // Big boards are opt-in — generation cost grows sharply with n, so nobody
-  // should land on a multi-minute wait without asking for it first.
-  size11: false, size12: false
+  // Big boards (and future experimental features) are opt-in behind one
+  // toggle — generation cost grows sharply with n, so nobody should land on
+  // a multi-minute wait without asking for it first.
+  experimental: false
 };
 
 // Mirrors the "checked" defaults baked into the size/difficulty radios in index.html.
@@ -4326,12 +4338,58 @@ const postMortemLine = (row, col) =>
 
 const GENERATE_FAILED = 'לא הצלחנו לבנות חידה בגודל הזה. נסו שוב.';
 
-/** Live attempt count on the generating screen — see generateAsync's onProgress. */
+/** Tiny dev-only readout on the generating screen — time and raw attempt count
+ * (see generateAsync's onProgress). Not shown to players; the balloon above it
+ * carries the player-facing WORKING_PHRASES instead. */
 const attemptLine = (n) => `ניסיון ${n}`;
+
+/**
+ * What the balloon on the generating screen says — a new random line every
+ * couple of seconds instead of a raw attempt count, closer to how Claude
+ * Code narrates its own "thinking". Keep entries short (they sit in a small
+ * speech bubble) and in the same warm, plain voice as the rest of the copy.
+ *
+ * Two flavors, drawn from the same pool: Noam narrating his own hiding, and
+ * — a little easter egg for a kid who loves planes — quick airplane facts.
+ */
+const HIDING_PHRASES = [
+  'בונה לוח גדול…',
+  'מערבב צבעים…',
+  'מחפש פינה טובה להתחבא…',
+  'סופר משבצות בלחש…',
+  'מסדר שורות ועמודות…',
+  'נועם מתלבט איפה להתחבא…',
+  'בודק שאף אחד לא יראה…',
+  'מנסה שוב, כי למה לא…',
+  'כמעט מסתדר…',
+  'מסתובב בלוח, מחפש פינה…',
+  'תכף מוצא מקום מושלם…',
+  'עוד רגע נועם נעלם…'
+];
+
+const PLANE_FACTS = [
+  'ידעת? מטוסים טסים בגובה 10 ק״מ בערך…',
+  'ידעת? הקופסה השחורה היא בעצם כתומה…',
+  'ידעת? הטיסה הראשונה נמשכה 12 שניות…',
+  'ידעת? לחלונות במטוס יש פינות עגולות בכוונה…',
+  'ידעת? קונקורד טס פי 2 ממהירות הקול…',
+  'ידעת? כנפי ג׳מבו רחבות כמו מגרש כדורגל…'
+];
+
+const WORKING_PHRASES = [...HIDING_PHRASES, ...PLANE_FACTS];
+
+/** A random phrase, never repeating the one just shown. */
+const nextWorkingPhrase = (prev) => {
+  if (WORKING_PHRASES.length <= 1) return WORKING_PHRASES[0];
+  let pick;
+  do { pick = WORKING_PHRASES[(Math.random() * WORKING_PHRASES.length) | 0]; }
+  while (pick === prev);
+  return pick;
+};
 
 const CLEAR_CONFIRM = 'זה ימחק את הדירוג, הנקודות וההגדרות שלך לצמיתות. להמשיך?';
 
-return { DIFFICULTY, RANKS, hintLine, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, CLEAR_CONFIRM };
+return { DIFFICULTY, RANKS, hintLine, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM };
 })();
 
 (() => {
@@ -4414,7 +4472,6 @@ function renderPips() {
 }
 
 function renderAssists() {
-  $('undo').hidden = !settings.undo;
   $('hint').hidden = !settings.hint;
   $('timer').hidden = !settings.timer;
   $('board').classList.toggle('show-glyphs', settings.glyphs);
@@ -4432,14 +4489,14 @@ function renderMenu() {
   $('new-game').classList.toggle('btn-primary', !hasSave);
 }
 
-// 11×11 and 12×12 are experimental (settings, off by default) — a slow,
+// 11×11 and 12×12 sit behind the single "experimental" toggle — a slow,
 // multi-minute generation shouldn't be one misclick away. Hide the option
 // rather than disable it, so the picker itself stays uncluttered until
 // someone opts in. If the size that's hidden was the checked one, fall back
 // to the default so a stale radio can't outlive its toggle.
 function renderSizeOptions() {
   for (const n of [11, 12]) {
-    const allowed = !!settings[`size${n}`];
+    const allowed = !!settings.experimental;
     const radio = $(`size-${n}`);
     radio.hidden = !allowed;
     document.querySelector(`label[for="size-${n}"]`).hidden = !allowed;
@@ -4553,37 +4610,45 @@ async function newPuzzle() {
 
   showScreen('working');
   $('working-note').hidden = true;
-  $('working-timer').hidden = true;
   $('working-balloon').hidden = true;
-  $('working-attempts').textContent = '';
+  $('working-dev').textContent = '';
+  $('working-phrase').textContent = '';
 
   // Large boards can take a long time to generate — only admit that once
   // it's actually true, so a normal small-board generation never flashes
-  // the notice. The timer and balloon run the whole time regardless, so
-  // once they're visible the wait is never a mystery.
+  // the note or balloon. The dev readout at the bottom is quiet enough to
+  // run the whole time regardless — see .working-dev in styles.css.
   const genStartedAt = Date.now();
-  const workingTimer = setInterval(() => {
-    $('working-timer').textContent = formatTime(Math.floor((Date.now() - genStartedAt) / 1000));
+  let lastAttempts = 0;
+  const onProgress = (attempts) => { lastAttempts = attempts; };
+  const devTimer = setInterval(() => {
+    const secs = Math.floor((Date.now() - genStartedAt) / 1000);
+    $('working-dev').textContent = `${formatTime(secs)} · ${t.attemptLine(lastAttempts)}`;
   }, 250);
+
+  // The balloon narrates instead of counting — see strings.js's
+  // nextWorkingPhrase doc for why that reads truer than a raw attempt
+  // number would (generation's total attempts is never predictable).
+  let lastPhrase = '';
+  const showPhrase = () => {
+    lastPhrase = t.nextWorkingPhrase(lastPhrase);
+    $('working-phrase').textContent = lastPhrase;
+  };
   const slowNoticeTimer = setTimeout(() => {
     $('working-note').hidden = false;
-    $('working-timer').hidden = false;
     $('working-balloon').hidden = false;
+    showPhrase();
   }, 5000);
-
-  // The balloon is just proof of life, not a fraction of a total. Generation
-  // is rejection sampling nested two loops deep (generator.js's `generate`):
-  // most runs finish in a handful of attempts, a few take hundreds, and
-  // nothing about elapsed time or attempts-so-far predicts which. The
-  // ticking attempt count is the honest signal — a fill-by-fraction bar
-  // would sit near-empty for nearly every run and then jump to done.
-  const onProgress = (attempts) => { $('working-attempts').textContent = t.attemptLine(attempts); };
+  const phraseTimer = setInterval(() => {
+    if (!$('working-balloon').hidden) showPhrase();
+  }, 2400);
 
   genController = new AbortController();
   const { signal } = genController;
   const puzzle = await generateAsync(n, difficulty, (Math.random() * 2 ** 31) >>> 0, signal, onProgress);
   clearTimeout(slowNoticeTimer);
-  clearInterval(workingTimer);
+  clearInterval(devTimer);
+  clearInterval(phraseTimer);
   genController = null;
 
   if (signal.aborted) {
@@ -4786,7 +4851,6 @@ $('back').addEventListener('click', () => {
   renderMenu();
 });
 
-$('undo').addEventListener('click', handlers.onUndo);
 
 $('hint').addEventListener('click', () => {
   if (!settings.hint || !state || state.status !== 'playing') return;
@@ -4819,7 +4883,7 @@ $('result-new').addEventListener('click', () => {
 });
 
 $('open-settings').addEventListener('click', () => {
-  for (const key of ['autoX', 'timer', 'undo', 'hint', 'glyphs', 'muted', 'size11', 'size12']) {
+  for (const key of ['autoX', 'glyphs', 'muted', 'experimental']) {
     $(`set-${key}`).checked = settings[key];
   }
   $('settings').showModal();
@@ -4848,7 +4912,7 @@ for (const id of ['settings', 'howto', 'about']) {
   attachSheetDrag($(id));
 }
 
-for (const key of ['autoX', 'timer', 'undo', 'hint', 'glyphs', 'muted', 'size11', 'size12']) {
+for (const key of ['autoX', 'glyphs', 'muted', 'experimental']) {
   $(`set-${key}`).addEventListener('change', (e) => {
     settings = { ...settings, [key]: e.target.checked };
     storage.setSettings(settings);

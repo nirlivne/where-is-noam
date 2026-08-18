@@ -7,7 +7,7 @@
 // cache with no manual version bump. In dev (served unbundled via
 // tools/serve.js) it stays the literal placeholder below, which is fine —
 // it only needs to change, not mean anything.
-const CACHE_VERSION = '1a45e829c8';
+const CACHE_VERSION = 'f122e564eb';
 const CACHE_NAME = `cats-${CACHE_VERSION}`;
 // three.js (confetti, loaded lazily from the jsdelivr CDN) lives in its own
 // cache so it survives app-shell cache rotations instead of being evicted
