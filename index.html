@@ -150,6 +150,17 @@
   --r-md:     13px;
   --r-sm:     9px;
 
+  /* The page's side padding. Named because the board reads it back: on a
+     phone it escapes the gutter to buy its own squares a few more pixels
+     (see .board-wrap). */
+  --gutter: clamp(.9rem, 4vw, 2.25rem);
+
+  /* The board's width, and therefore the tool row's. Resolved against
+     .board-wrap, so the percentage is the room the breakout won. Shared
+     rather than repeated: the tools hang off the board's bottom corners and
+     any drift between the two numbers shows up as a misalignment. */
+  --board-w: min(100%, 62vh, 620px);
+
   --display: 'Rubik', 'Arial Hebrew', 'Noto Sans Hebrew', system-ui, sans-serif;
   --ui:      'Heebo', 'Arial Hebrew', 'Noto Sans Hebrew', system-ui, sans-serif;
   --num:     ui-monospace, 'SF Mono', Menlo, monospace;
@@ -285,7 +296,7 @@ a:hover { color: var(--accent); }
 /* ───────────────────────────── layout ───────────────────────────── */
 
 main {
-  padding: clamp(1.1rem, 4vw, 2.5rem) clamp(.9rem, 4vw, 2.25rem) 3rem;
+  padding: clamp(1.1rem, 4vw, 2.5rem) var(--gutter) 3rem;
   max-width: 60rem;
   margin: 0 auto;
 }
@@ -326,7 +337,7 @@ main {
   display: flex;
   flex-wrap: wrap;
   gap: 1.4rem 2.25rem;
-  margin-bottom: 1.6rem;
+  margin-bottom: 2.2rem;
 }
 
 .field > label {
@@ -482,8 +493,30 @@ main {
 }
 .btn-small:active { transform: translate(calc(var(--pop-sm) * -1), var(--pop-sm)); }
 
-.menu-actions { display: flex; flex-direction: column; align-items: flex-start; gap: .9rem; margin-bottom: 2.4rem; }
-.menu-actions-primary { display: flex; gap: .9rem; flex-wrap: wrap; }
+/* Bare button, no wrapper: when there is no save its own [hidden] collapses
+   the gap too, instead of leaving an empty row above the setup. */
+.menu-resume { margin-bottom: 2.4rem; }
+
+.menu-commit { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
+
+/* Help, not an action. Reads as a link so it can sit next to the primary
+   without competing with it. */
+.btn-quiet {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: .9rem;
+  padding: .4rem .2rem;
+  color: var(--chrome);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: .25em;
+  text-decoration-thickness: 2px;
+  cursor: pointer;
+  transition: color .12s;
+}
+.btn-quiet:hover { color: var(--ink); }
+.btn-quiet:focus-visible { outline: 3px solid var(--region-0); outline-offset: 3px; border-radius: var(--r-sm); }
 
 /* ───────────────────────────── how to play ───────────────────────────── */
 
@@ -572,8 +605,10 @@ main {
   gap: 1rem;
   margin-bottom: 1rem;
 }
-.status-mid { flex: 1; display: flex; align-items: center; gap: .9rem; justify-content: center; }
-.status-tools { display: flex; gap: .45rem; }
+/* Two children now that the hint button has moved below the board, so the
+   lives and the meta hug the inline-end rather than floating in a centre
+   that the back button pushes off anyway. */
+.status-mid { flex: 1; display: flex; align-items: center; gap: .9rem; justify-content: flex-end; }
 
 .pips { display: flex; gap: .35rem; }
 .pip {
@@ -596,18 +631,32 @@ main {
 
 /* ───────────────────────────── board ───────────────────────────── */
 
-.board-wrap { position: relative; width: fit-content; margin: 0 auto; }
+/* Full-width, so #board's `min(100%, …)` measures the room actually available
+   instead of guessing at it in vw. The negative margin lets the board — and
+   only the board — spill into the page gutter, down to a 6px rim: on a 390px
+   phone that is about a dozen pixels back, which at 8×8 is a visibly bigger
+   square. Clamped at 0 so nothing moves once the gutter is smaller than the
+   rim we keep. */
+.board-wrap {
+  width: auto;
+  margin-inline: min(0px, calc(6px - var(--gutter)));
+}
 
 #board {
   position: relative;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(var(--n), 1fr);
-  /* Sized against the viewport so one square board works from phone to
-     desktop with no media queries. Do not replace with breakpoints. */
-  width: min(92vw, 62vh, 620px);
+  /* Sized against the room it is given and the viewport height, so one square
+     board works from phone to desktop with no media queries. Do not replace
+     with breakpoints. */
+  width: var(--board-w);
+  margin-inline: auto;
   aspect-ratio: 1;
-  border: 4px solid var(--ink);
+  /* A rim, not a frame. The heavy keyline and its cast shadow were costing
+     real squares on a narrow phone, and the board already reads as an object
+     from its fills and its corner radius. */
+  border: 2px solid var(--ink);
   border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--ink);
@@ -626,15 +675,6 @@ main {
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-}
-
-.board-shadow {
-  position: absolute;
-  inset: 0;
-  transform: translate(-9px, 9px); /* offset toward the inline-start in RTL */
-  border-radius: var(--r-lg);
-  background: var(--ink);
-  z-index: 0;
 }
 
 .cell {
@@ -800,6 +840,65 @@ main {
 }
 #board.show-glyphs .glyph-num { display: block; }
 
+/* ───────────────────────────── tools ─────────────────────────────
+   Sits directly under the board. Two groups pushed to opposite ends so the
+   corrective pair and the informational pair never blur into one six-button
+   strip a child has to read through. */
+.tools {
+  width: var(--board-w);
+  margin: .9rem auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.tools-group { display: flex; gap: .45rem; align-items: center; }
+
+/* Undo and redo are glyphs, not words: the pair has to stay small enough that
+   the two buttons that carry sentences keep the visual weight. The legend
+   below the board names them once.
+
+   ↶ and ↷ are NOT in the self-hosted subsets (they carry Hebrew and basic
+   Latin only — check with fontTools before assuming otherwise), so they come
+   from whatever the OS supplies: Segoe UI Symbol, Apple Symbols, Noto. That
+   means a thinner stroke than everything around them and a different shape per
+   platform. Oversized here to compensate; the buttons carry title and
+   aria-label so nothing is lost if a device has no glyph at all. */
+.tool-btn {
+  width: 2.3rem; height: 2.3rem;
+  flex: none;
+  display: grid; place-items: center;
+  font: inherit; font-size: 1.5rem; line-height: 1;
+  color: var(--ink);
+  background: var(--panel);
+  border: var(--edge) solid var(--ink);
+  border-radius: var(--r-sm);
+  box-shadow: var(--pop-sm) var(--pop-sm) 0 var(--ink);
+  cursor: pointer;
+  transition: transform .08s, box-shadow .08s, background .12s, opacity .12s;
+}
+.tool-btn:hover:not(:disabled) { background: var(--accent-3); }
+.tool-btn:active:not(:disabled) {
+  transform: translate(calc(var(--pop-sm) * -1), var(--pop-sm));
+  box-shadow: 0 0 0 var(--ink);
+}
+.tool-btn:focus-visible { outline: 3px solid var(--region-0); outline-offset: 2px; }
+
+/* Faded and flattened rather than hidden — a button that vanishes when there
+   is nothing to undo makes the row jump, and the empty history is itself
+   worth showing. */
+.tool-btn:disabled {
+  opacity: .34;
+  cursor: default;
+  box-shadow: none;
+  transform: translate(calc(var(--pop-sm) * -1), var(--pop-sm));
+}
+
+/* The free allowance counts down inside the label (see t.checkButton), so the
+   button changes width as it is used. Reserved, or the pair shuffles. */
+#check { min-width: 6.2rem; }
+
 .hint-text {
   max-width: 32rem;
   margin: 1rem auto 0;
@@ -813,6 +912,12 @@ main {
   box-shadow: var(--pop-sm) var(--pop-sm) 0 var(--ink);
   text-wrap: pretty;
 }
+
+/* A check answers in colour before it answers in words: mint for a board that
+   holds up, the warm accent for one that does not. Neither is the hint bar's
+   yellow, so a check result never reads as a hint the player did not ask for. */
+.hint-text.is-clean { background: var(--accent-2-soft); }
+.hint-text.is-warn  { background: var(--panel); border-color: var(--accent); color: var(--accent); }
 
 .legend {
   display: flex;
@@ -830,6 +935,10 @@ main {
   border-bottom: 2.5px solid var(--accent);
 }
 .legend span:last-child .k { border-bottom-color: var(--accent-2); }
+/* The undo/redo arrows, quoted from the buttons. At the legend's .78rem they
+   shrink into unreadable specks, and a child matching them against the row
+   above needs to recognise the shape. */
+.legend .k-glyph { font-size: 1.25em; letter-spacing: .1em; }
 
 /* ───────────────────────────── working ───────────────────────────── */
 
@@ -1166,8 +1275,10 @@ dialog.about .dialog-actions { justify-content: center; }
 @media (max-width: 34rem) {
   .bar { flex-wrap: wrap; gap: .6rem; }
   .rank { order: 3; max-width: none; flex-basis: 100%; }
-  .status { flex-wrap: wrap; }
-  .status-mid { order: 3; flex-basis: 100%; }
+  /* Back plus lives plus meta fits one row now that the tools have moved
+     below the board, so the status bar stops spending a second line on it. */
+  .status { flex-wrap: wrap; gap: .6rem; }
+  .tools { gap: .45rem; }
   .howto-body { gap: 1.1rem; }
 }
 
@@ -1205,12 +1316,10 @@ dialog.about .dialog-actions { justify-content: center; }
     <h1 class="display">איפה<br>נועם?</h1>
     <p class="tagline">מצאו אותו בכל שורה, בכל עמודה ובכל צבע.</p>
 
-    <div class="menu-actions">
-      <div class="menu-actions-primary">
-        <button class="btn" id="resume" type="button" hidden>המשך משחק</button>
-        <button class="btn" id="new-game" type="button">משחק חדש</button>
-      </div>
-    </div>
+    <!-- Resume sits above the setup because it ignores it: it reopens a saved
+         board rather than composing a new one. Everything below this line is
+         the sentence "new game" ends. -->
+    <button class="btn menu-resume" id="resume" type="button" hidden>המשך משחק</button>
 
     <div class="setup">
       <!-- The variant is a game, not a setting: it decides which sizes even
@@ -1269,7 +1378,13 @@ dialog.about .dialog-actions { justify-content: center; }
       </div>
     </div>
 
-    <button class="btn" id="open-howto" type="button">איך משחקים?</button>
+    <!-- The commit, directly under what it commits. "How to play" rides along
+         as a quiet link — it is help, not a second way forward, so it must not
+         read as a button of the same weight. -->
+    <div class="menu-commit">
+      <button class="btn" id="new-game" type="button">משחק חדש</button>
+      <button class="btn-quiet" id="open-howto" type="button">איך משחקים?</button>
+    </div>
   </section>
 
   <!-- ─────────────────────────── GAME ─────────────────────────── -->
@@ -1289,14 +1404,30 @@ dialog.about .dialog-actions { justify-content: center; }
         </div>
       </div>
 
-      <div class="status-tools">
-        <button class="btn btn-small" id="hint" type="button" hidden>רמז</button>
-      </div>
     </div>
 
+    <!-- The tools live inside the board's wrapper, not beside it, so they can
+         be given the board's exact width and hang off its two bottom corners
+         at every screen size. Outside it they stretch to the page instead and
+         strand themselves at the far edges of a desktop window. -->
     <div class="board-wrap">
       <div id="board" role="grid" aria-label="לוח החידה"></div>
-      <div class="board-shadow" aria-hidden="true"></div>
+
+      <!-- The four mid-play actions, under the board rather than up in the
+           status bar: they are all taken while looking at the grid, they land
+           in the thumb's reach on a phone, and the message they produce prints
+           directly beneath them. Corrective pair first (inline-start),
+           informational pair second. -->
+      <div class="tools" role="toolbar" aria-label="פעולות">
+        <div class="tools-group">
+          <button class="tool-btn" id="undo" type="button" title="בטל" aria-label="בטל" disabled>↶</button>
+          <button class="tool-btn" id="redo" type="button" title="שחזר" aria-label="שחזר" disabled>↷</button>
+        </div>
+        <div class="tools-group">
+          <button class="btn btn-small" id="check" type="button">בדיקה</button>
+          <button class="btn btn-small" id="hint" type="button" hidden>תן רמז</button>
+        </div>
+      </div>
     </div>
 
     <p class="hint-text" id="hint-text" hidden></p>
@@ -1304,6 +1435,7 @@ dialog.about .dialog-actions { justify-content: center; }
     <div class="legend">
       <span><b class="k">לחיצה</b> או <b class="k">גרירה</b> — סימון משבצת ריקה</span>
       <span><b class="k">לחיצה כפולה</b> או <b class="k">לחיצה ארוכה</b> — מציאת נועם</span>
+      <!-- <span><b class="k k-glyph">↶ ↷</b> — ביטול ושחזור של סימונים</span> -->
     </div>
   </section>
 
@@ -4338,8 +4470,9 @@ const MAX_STRIKES = 3;
  * effects layers; the reducer itself never performs I/O, touches the DOM, or
  * reads a clock beyond timestamping the log.
  *
- * Two histories, deliberately:
- *   undoStack — mark diffs only, popped by undo
+ * Three histories, deliberately:
+ *   undoStack — mark diffs only, popped by undo, pushed by redo
+ *   redoStack — diffs undo took back, emptied by any fresh action
  *   log       — append-only, never popped, powers the loss post-mortem
  */
 function newGame(puzzle, { isRetry = false } = {}) {
@@ -4353,9 +4486,14 @@ function newGame(puzzle, { isRetry = false } = {}) {
     // How many hints were taken at each level, not whether one was. A tally,
     // because the levels are priced differently — see score.js.
     hints: newHints(),
+    // How many times the board was checked for a wrong X. The first few are
+    // free and the rest are priced — see score.js — so this is a count, not a
+    // flag.
+    checks: 0,
     isRetry,
     status: 'playing',
     undoStack: [],
+    redoStack: [],
     log: []
   };
 }
@@ -4377,6 +4515,7 @@ function clone(s) {
     faulted: new Set(s.faulted),
     hints: { ...s.hints },
     undoStack: s.undoStack.slice(),
+    redoStack: s.redoStack.slice(),
     log: s.log.slice()
   };
 }
@@ -4387,6 +4526,10 @@ function applyMark(state, cell, to) {
   const s = clone(state);
   s.marks[cell] = to;
   s.undoStack.push(diff);
+  // A fresh move forks the timeline: whatever undo had taken back is no longer
+  // reachable, so redo must not offer to re-apply it on top of a board that
+  // has since moved on.
+  s.redoStack = [];
   s.log.push({ type: 'mark', cell, from, to, at: Date.now() });
   return { state: s, events: [{ type: 'mark', cell, to }] };
 }
@@ -4404,16 +4547,40 @@ function paintMark(state, cell, to) {
   return applyMark(state, cell, to);
 }
 
+const canUndo = (state) => state?.status === 'playing' && state.undoStack.length > 0;
+const canRedo = (state) => state?.status === 'playing' && state.redoStack.length > 0;
+
+/**
+ * Undo and redo move one diff between the two stacks and replay it in the
+ * matching direction. Only marks are on those stacks, which is the whole
+ * safety property: a found cat and a spent life were paid for against the
+ * oracle and neither button can hand them back (see revealAttempt).
+ *
+ * An auto-X batch is a single diff, so it undoes and redoes as one step.
+ */
 function undo(state) {
-  if (state.status !== 'playing' || state.undoStack.length === 0) {
-    return { state, events: [] };
-  }
+  if (!canUndo(state)) return { state, events: [] };
   const s = clone(state);
   const diff = s.undoStack.pop();
   for (const { cell, from } of diff) s.marks[cell] = from;
+  s.redoStack.push(diff);
   const cells = diff.map(d => d.cell);
   s.log.push({ type: 'undo', cells, at: Date.now() });
   return { state: s, events: [{ type: 'undo', cells }] };
+}
+
+function redo(state) {
+  if (!canRedo(state)) return { state, events: [] };
+  const s = clone(state);
+  const diff = s.redoStack.pop();
+  // Skip cells the oracle has since locked. Unreachable while redoStack is
+  // cleared by every reveal, but a redo that overwrote a found cat with an X
+  // would be a lie about the board, so it is refused here as well.
+  for (const { cell, to } of diff) if (!s.locked[cell]) s.marks[cell] = to;
+  s.undoStack.push(diff);
+  const cells = diff.map(d => d.cell);
+  s.log.push({ type: 'redo', cells, at: Date.now() });
+  return { state: s, events: [{ type: 'redo', cells }] };
 }
 
 /**
@@ -4458,6 +4625,7 @@ function revealAttempt(state, cell, { autoX = false } = {}) {
 
   const { puzzle } = state;
   const s = clone(state);
+  s.redoStack = [];   // a reveal forks the timeline — see applyMark
   const events = [];
 
   if (puzzle.solution[cell] === 1) {
@@ -4542,6 +4710,29 @@ function findBadMarks(state) {
     if (state.marks[i] === MARK.X && state.puzzle.solution[i] === 1) out.push(i);
   }
   return out;
+}
+
+/**
+ * The free audit: is anything the player has crossed out actually wrong?
+ *
+ * One bit, deliberately. Not the count, not the colour, not the square — those
+ * are the three rungs of the bad-mark hint above, and a check that answered any
+ * of them would retire the ladder it sits under. What it buys is the thing the
+ * hint cannot: permission to keep going without wondering.
+ *
+ * It is an oracle all the same — X a square, ask, and a "no" has located a cat
+ * — so it is counted. score.js gives the first few away and prices the rest,
+ * which is enough to make an honest check free and a binary search of the board
+ * expensive. Nothing here costs a life: the strike counter is untouched, which
+ * is the whole point of checking rather than guessing.
+ */
+function checkBoard(state) {
+  if (state.status !== 'playing') return { state, clean: true, events: [] };
+  const clean = findBadMarks(state).length === 0;
+  const s = clone(state);
+  s.checks++;
+  s.log.push({ type: 'check', clean, at: Date.now() });
+  return { state: s, clean, events: [{ type: 'check', clean }] };
 }
 
 function spendHint(state, level, entry) {
@@ -4684,7 +4875,7 @@ function postMortem(state) {
   return null;
 }
 
-return { MARK, MAX_STRIKES, newGame, HINT_LEVELS, newHints, hintsFrom, anyHint, toggleMark, paintMark, undo, revealAttempt, HINT_RULE_ORDER, findBadMarks, hint, postMortem };
+return { MARK, MAX_STRIKES, newGame, HINT_LEVELS, newHints, hintsFrom, anyHint, toggleMark, paintMark, canUndo, canRedo, undo, redo, revealAttempt, HINT_RULE_ORDER, findBadMarks, checkBoard, hint, postMortem };
 })();
 
 const $render = (() => {
@@ -4895,7 +5086,13 @@ function attachInput(boardEl, handlers) {
     if (e.key.startsWith('Arrow')) { e.preventDefault(); handlers.onMove(e.key); }
     else if (e.key === ' ') { e.preventDefault(); handlers.onToggleFocused(); }
     else if (e.key === 'Enter') { e.preventDefault(); handlers.onRevealFocused(); }
-    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); handlers.onUndo(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      // Both spellings of redo: shift-Z is the mac/most-editors one, Y the
+      // Windows one. Plain Ctrl-Z is undo.
+      e.preventDefault();
+      (e.shiftKey ? handlers.onRedo : handlers.onUndo)();
+    }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); handlers.onRedo(); }
   });
 }
 
@@ -4913,10 +5110,11 @@ const KEYS = {
 };
 
 const DEFAULT_SETTINGS = {
-  // timer, hint and undo have no settings UI (see index.html) — timer and
-  // hint are always on, undo is always off — but stay here so the code that
-  // reads them doesn't need special-casing.
-  autoX: true, timer: true, undo: false, hint: true, glyphs: false, muted: false,
+  // timer and hint have no settings UI (see index.html) — both are always on —
+  // but stay here so the code that reads them doesn't need special-casing.
+  // Undo used to live here too, off by default and reachable only by Ctrl-Z;
+  // it has a button of its own now and is unconditional, so the flag is gone.
+  autoX: true, timer: true, hint: true, glyphs: false, muted: false,
   // Big boards (and future experimental features) are opt-in behind one
   // toggle — generation cost grows sharply with n, so nobody should land on
   // a multi-minute wait without asking for it first.
@@ -4983,6 +5181,7 @@ function makeStorage(store = globalThis.localStorage) {
       faulted: [...state.faulted],
       strikes: state.strikes,
       hints: state.hints,
+      checks: state.checks,
       isRetry: state.isRetry,
       elapsed
     }),
@@ -5040,21 +5239,52 @@ const RANKS = [
 const HINT_FACTOR = { 1: 0.95, 2: 0.85, 3: 0.5 };
 const HINT_FLOOR = 0.3;
 
-function hintFactor(hints = {}) {
-  let factor = 1;
-  for (const level of Object.keys(HINT_FACTOR)) factor *= HINT_FACTOR[level] ** (hints[level] ?? 0);
-  return Math.max(HINT_FLOOR, factor);
+/**
+ * The board check is priced on a separate, much gentler curve, and the first
+ * few are given away outright.
+ *
+ * The free allowance is what the button is *for*: a player who suspects they
+ * broke the board ten minutes ago should be able to ask without doing arithmetic
+ * about it. Three is enough for that and nowhere near enough to abuse — probing
+ * for a cat by crossing out halves of the board takes six answers on an 8×8, so
+ * the exploit runs past the allowance before it learns anything.
+ *
+ * Past the allowance a check costs less than the cheapest hint, because it says
+ * less than the cheapest hint: one bit about marks the player made themselves,
+ * against a hint's pointer to a square they had not considered.
+ */
+const FREE_CHECKS = 3;
+const CHECK_FACTOR = 0.97;
+
+const hintProduct = (hints = {}) =>
+  Object.keys(HINT_FACTOR).reduce((f, level) => f * HINT_FACTOR[level] ** (hints[level] ?? 0), 1);
+
+const checkProduct = (checks = 0) => CHECK_FACTOR ** Math.max(0, checks - FREE_CHECKS);
+
+/** How many checks are still free. Drives the button's label — see main.js. */
+const freeChecksLeft = (checks = 0) => Math.max(0, FREE_CHECKS - checks);
+
+/**
+ * Every assist a run leaned on, as one multiplier. Floored once, over the
+ * product: two separately-floored factors would multiply to below the floor,
+ * and the floor exists so that a finished board is always worth banking.
+ */
+function assistFactor({ hints, checks } = {}) {
+  return Math.max(HINT_FLOOR, hintProduct(hints) * checkProduct(checks));
 }
+
+/** The hint half alone, for the win dialog's line about them. */
+const hintFactor = (hints = {}) => Math.max(HINT_FLOOR, hintProduct(hints));
 
 /**
  * Rewards care over speed. The retry multiplier is load-bearing: without it the
  * optimal strategy is to burn strikes carelessly, learn the board, then farm it.
  */
-function scoreRun({ n, difficulty, strikes, hints, isRetry, won, k = 1 }) {
+function scoreRun({ n, difficulty, strikes, hints, checks, isRetry, won, k = 1 }) {
   if (!won) return 0;
   const base = n * 10 * DIFFICULTY_MULTIPLIER[difficulty] * (VARIANT_MULTIPLIER[k] ?? 1);
   const unused = MAX_STRIKES - strikes;
-  return Math.round(base * (1 + 0.25 * unused) * hintFactor(hints) * (isRetry ? 0.5 : 1));
+  return Math.round(base * (1 + 0.25 * unused) * assistFactor({ hints, checks }) * (isRetry ? 0.5 : 1));
 }
 
 /** Returns { index, name, at, next } — `next` is null at the top rank. */
@@ -5064,7 +5294,7 @@ function rankFor(points) {
   return { index, ...RANKS[index], next: RANKS[index + 1] ?? null };
 }
 
-return { DIFFICULTY_MULTIPLIER, MAX_STRIKES, VARIANT_MULTIPLIER, RANKS, HINT_FACTOR, HINT_FLOOR, hintFactor, scoreRun, rankFor };
+return { DIFFICULTY_MULTIPLIER, MAX_STRIKES, VARIANT_MULTIPLIER, RANKS, HINT_FACTOR, HINT_FLOOR, FREE_CHECKS, CHECK_FACTOR, freeChecksLeft, assistFactor, hintFactor, scoreRun, rankFor };
 })();
 
 const $example = (() => {
@@ -6032,6 +6262,14 @@ const winLine = ({ n, difficulty, seconds, strikes, best, k = 1 }) =>
 const hintUsedLine = (factor) =>
   `השתמשת ברמזים, אז המשחק הזה שווה ${Math.round(factor * 100)}% ולא נשמר כשיא.`;
 
+/**
+ * Charged checks, when the run took no hints at all. Says nothing about the
+ * record, because a check does not disqualify one — it reports on marks the
+ * player made themselves and names no square they had not already picked.
+ */
+const checksUsedLine = (factor) =>
+  `בדקת את הלוח כמה פעמים מעבר לחינם, אז המשחק הזה שווה ${Math.round(factor * 100)}%.`;
+
 const WIN_TITLE = 'מצאת את כולם!';
 const LOSS_TITLE = 'נגמרו החיים';
 const LOSS_LINE = 'שלוש טעויות. נועם ניצח הפעם.';
@@ -6095,19 +6333,50 @@ const nextWorkingPhrase = (prev) => {
 const CLEAR_CONFIRM = 'זה ימחק את הדירוג, הנקודות וההגדרות שלך לצמיתות. להמשיך?';
 
 /** The hint button relabels itself as the ladder climbs. */
-const HINT_BUTTON = 'רמז';
+const HINT_BUTTON = 'תן רמז';
 const HINT_BUTTON_MORE = 'עוד רמז';
 
-return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, winLine, hintUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE };
+/* ───────────────────────────── check ───────────────────────────── */
+
+/* Undo and redo are not here: their labels are static title/aria-label
+   attributes in index.html, which is where this module's header says static
+   copy lives. Only the check button's label is built at runtime, because it
+   counts the free allowance down. */
+const CHECK_BUTTON = 'בדיקה';
+
+/**
+ * The free checks are counted down on the button itself rather than explained
+ * anywhere, so a child can see the allowance shrinking and work out the deal
+ * without being told it. Once it runs out the number goes away instead of
+ * turning into a price — the button still works, and "0" on a button reads as
+ * broken.
+ */
+const checkButton = (freeLeft) =>
+  (freeLeft > 0 ? `${CHECK_BUTTON} · ${freeLeft}` : CHECK_BUTTON);
+
+/**
+ * The two things a check can say. Deliberately vague about *where*: naming the
+ * square, the colour or even the count is what the hint ladder is for, and a
+ * check that did any of that would make the rungs beneath it unpressable.
+ *
+ * The clean line hedges with "so far" on purpose. Every X on the board being
+ * sound is not a promise that the board is solvable from here, and a child who
+ * read it as one would be owed an apology later.
+ */
+const CHECK_CLEAN = 'כל האיקסים שסימנת נכונים עד עכשיו. אפשר להמשיך בביטחון.';
+const CHECK_DIRTY = 'משהו לא מסתדר — יש איקס על משבצת שנועם מתחבא בה. ' +
+  'תעברו שוב על הסימונים, או תבקשו רמז.';
+
+return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, winLine, hintUsedLine, checksUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE, CHECK_BUTTON, checkButton, CHECK_CLEAN, CHECK_DIRTY };
 })();
 
 (() => {
 const { generateAsync } = $generateAsync;
-const { newGame, toggleMark, paintMark, undo, revealAttempt, postMortem, hint, hintsFrom, anyHint, MARK, MAX_STRIKES } = $game;
+const { newGame, toggleMark, paintMark, undo, redo, canUndo, canRedo, checkBoard, revealAttempt, postMortem, hint, hintsFrom, anyHint, MARK, MAX_STRIKES } = $game;
 const { buildBoard, render } = $render;
 const { attachInput } = $input;
 const { makeStorage } = $storage;
-const { scoreRun, rankFor, hintFactor } = $score;
+const { scoreRun, rankFor, hintFactor, assistFactor, freeChecksLeft } = $score;
 const { idx, rowOf, colOf, catCells } = $board;
 const { EXAMPLES } = $example;
 const fx = $effects;
@@ -6174,6 +6443,27 @@ function repaint() {
   // Dimming everything outside what the hint names is the board's half of it.
   // Nothing is named until level 2, so a level-1 hint leaves the board alone.
   $('board').classList.toggle('is-looking', hintLook.length > 0);
+  renderTools();
+}
+
+/**
+ * The tool row, read straight off state — which is why every path into the
+ * board goes through repaint rather than toggling these at the call site.
+ */
+function renderTools() {
+  $('undo').disabled = !canUndo(state);
+  $('redo').disabled = !canRedo(state);
+  $('check').disabled = !state || state.status !== 'playing';
+  $('check').textContent = t.checkButton(freeChecksLeft(state?.checks ?? 0));
+}
+
+/** Prints into the bar under the tools. `mood` styles it; see .hint-text. */
+function showMessage(text, mood = '') {
+  const el = $('hint-text');
+  el.textContent = text;
+  el.classList.toggle('is-clean', mood === 'clean');
+  el.classList.toggle('is-warn', mood === 'warn');
+  el.hidden = false;
 }
 
 /** Any real move invalidates the hint that was on screen, and resets the ladder. */
@@ -6183,6 +6473,7 @@ function clearHint() {
   hintLook = [];
   hintLevel = 0;
   $('hint-text').hidden = true;
+  $('hint-text').classList.remove('is-clean', 'is-warn');
   $('hint').disabled = false;
   $('hint').textContent = t.HINT_BUTTON;
 }
@@ -6341,6 +6632,7 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
     state.faulted = new Set(restore.faulted);
     state.strikes = restore.strikes;
     state.hints = hintsFrom(restore);
+    state.checks = restore.checks ?? 0;   // saves written before the check button
     state.isRetry = restore.isRetry;
   }
 
@@ -6436,12 +6728,15 @@ function finishWin() {
     n, difficulty, k,
     strikes: state.strikes,
     hints: state.hints,
+    checks: state.checks,
     isRetry: state.isRetry,
     won: true
   });
   storage.addPoints(points);
   // A time record means a clean run: any hint at any level disqualifies it,
-  // even though points are only graded down.
+  // even though points are only graded down. Checks deliberately do not — they
+  // report on marks the player made themselves and name no square, so a record
+  // set with one is still a record set by finding every cat unaided.
   const usedHint = anyHint(state.hints);
   if (!usedHint) storage.recordBest(n, difficulty, seconds, k);
   renderRank();
@@ -6456,8 +6751,13 @@ function finishWin() {
   });
   $('result-score').hidden = false;
   $('result-points').textContent = points.toLocaleString();
-  $('result-postmortem').hidden = !usedHint;
+  // One line, and hints outrank checks in it: a run that took both is a run
+  // that took hints, and two lines about assistance on a win screen is a
+  // lecture. A charged check alone gets its own gentler sentence.
+  const charged = assistFactor({ hints: state.hints, checks: state.checks });
+  $('result-postmortem').hidden = charged === 1;
   if (usedHint) $('result-postmortem').textContent = t.hintUsedLine(hintFactor(state.hints));
+  else if (charged < 1) $('result-postmortem').textContent = t.checksUsedLine(charged);
   $('result-retry').hidden = true;
   $('result-new').textContent = t.NEW_PUZZLE;
   $('result').classList.add('is-win');   // the win dialog styling keys off this
@@ -6532,8 +6832,14 @@ const handlers = {
   },
 
   onUndo() {
-    if (!settings.undo) return;
     const r = undo(state);
+    state = r.state;
+    paint(r.events);
+    scheduleSave();
+  },
+
+  onRedo() {
+    const r = redo(state);
     state = r.state;
     paint(r.events);
     scheduleSave();
@@ -6638,6 +6944,30 @@ $('back').addEventListener('click', () => {
 });
 
 
+$('undo').addEventListener('click', () => handlers.onUndo());
+$('redo').addEventListener('click', () => handlers.onRedo());
+
+/**
+ * The free audit. Deliberately does *not* go through paint(): a check moves no
+ * mark, so wiping the hint on screen would punish the player for asking whether
+ * it was safe to follow it. It writes into the same message bar the hint uses —
+ * one place under the board where the game talks — and the hint ladder picks up
+ * where it left off on the next press.
+ */
+$('check').addEventListener('click', () => {
+  if (!state || state.status !== 'playing') return;
+  const r = checkBoard(state);
+  state = r.state;
+  showMessage(r.clean ? t.CHECK_CLEAN : t.CHECK_DIRTY, r.clean ? 'clean' : 'warn');
+  // The X sound for a wrong mark, the hint sparkle for a clean board. Never the
+  // strike sound: nothing was lost, and this is the button you press *instead*
+  // of risking one.
+  audio.play(r.clean ? 'hint' : 'mark');
+  haptics.play(r.clean ? 'hint' : 'mark');
+  renderTools();
+  scheduleSave();
+});
+
 $('hint').addEventListener('click', () => {
   if (!settings.hint || !state || state.status !== 'playing') return;
   if (hintLevel >= 3) return;
@@ -6658,11 +6988,11 @@ $('hint').addEventListener('click', () => {
   if (h.kind === 'badMark') {
     if (h.region !== undefined) hintLook = regionCells(h.region);
     if (h.cell !== undefined) { focusCell = h.cell; hintCell = h.cell; }
-    $('hint-text').textContent = t.badMarkLine(h, n);
+    showMessage(t.badMarkLine(h, n));
   } else if (level === 1) {
-    $('hint-text').textContent = t.hintLead(h.step, n);
+    showMessage(t.hintLead(h.step, n));
   } else if (level === 2) {
-    $('hint-text').textContent = t.hintPremise(h.step, n);
+    showMessage(t.hintPremise(h.step, n));
   } else {
     if (h.step.action === 'place') {
       focusCell = h.step.cell;
@@ -6671,12 +7001,11 @@ $('hint').addEventListener('click', () => {
       hintOut = h.step.cells;
       focusCell = h.step.cells[0];
     }
-    $('hint-text').textContent = t.hintText(h.step, n);
+    showMessage(t.hintText(h.step, n));
   }
 
   audio.play('hint');
   haptics.play('hint');
-  $('hint-text').hidden = false;
   $('hint').disabled = hintLevel >= 3;
   $('hint').textContent = hintLevel >= 3 ? t.HINT_BUTTON : t.HINT_BUTTON_MORE;
   repaint();
