@@ -766,10 +766,11 @@ main {
   to   { transform: rotate(90deg); }
 }
 
-/* A level-1 hint says "look at the orange colour" and the board says it too, by
+/* From level 2 a hint states its premise, and the board states it too, by
    stepping back everywhere else. Dimming rather than highlighting, because a
    ring drawn on ten scattered cells reads as decoration, while a quiet board
-   with one lit unit reads as an instruction.
+   with one lit area reads as an instruction. Level 1 is a sentence alone — see
+   lookCells in game.js — so nothing here fires until the second press.
 
    A flat wash of paper over the cell, NOT opacity and NOT a filter. The palette
    carries a deliberately wide lightness ramp (see the note on the region
@@ -2051,7 +2052,15 @@ function deduce(n, regions, {
       }
 
       if (killed.length) {
-        if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit: units[ui], cells: killed });
+        // `suspects` rides along for the hint: this is the one rule whose
+        // argument is about squares *outside* the unit it names, so a hint that
+        // lit only the unit would dim the very cells its sentence is about.
+        if (collectSteps) {
+          steps.push({
+            rule: 'R5', action: 'eliminate', unit: units[ui],
+            cells: killed, suspects: [...suspects]
+          });
+        }
         return true;
       }
     }
@@ -3492,7 +3501,15 @@ function deduce(n, regions, {
       }
 
       if (killed.length) {
-        if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit: units[ui], cells: killed });
+        // `suspects` rides along for the hint: this is the one rule whose
+        // argument is about squares *outside* the unit it names, so a hint that
+        // lit only the unit would dim the very cells its sentence is about.
+        if (collectSteps) {
+          steps.push({
+            rule: 'R5', action: 'eliminate', unit: units[ui],
+            cells: killed, suspects: [...suspects]
+          });
+        }
         return true;
       }
     }
@@ -4535,22 +4552,46 @@ function spendHint(state, level, entry) {
 }
 
 /**
- * The cells a hint asks the player to look at — the unit the rule fired on,
- * which is what levels 1 and 2 talk about and what the board dims around.
+ * The cells a hint asks the player to look at — what stays lit while the board
+ * dims around it.
  *
- * Whatever the sentence names is what lights up. R4 argues from a set of lines,
- * R6 from a set of colours, and everything else from a single unit.
+ * Empty at level 1, which leaves the board untouched. Level 1 is words only:
+ * it names a colour or a line, and the colour is already on screen for the
+ * player to find. Dimming used to be the level-1 gesture, but for every
+ * elimination rule it lit the wrong half of the argument — "look at the
+ * bordeaux", board greyed down to the bordeaux, and then the next level talks
+ * about squares that are *not* bordeaux. Better to say nothing with the board
+ * than to point away from the answer.
+ *
+ * From level 2 the premise is spoken, so the board can point at what it names —
+ * the unit *and* whatever the rule reasons against: R5's squares touching the
+ * unit, R3's line, R4's and R6's colours and lines together, since those two
+ * argue one against the other and need both on screen.
+ *
+ * Level 3 keeps level 2's field: it adds marks, not scope.
  */
-function lookCells(step, n, regions) {
-  if (step.unit) return step.unit.cells;
+function lookCells(step, n, regions, level) {
+  if (level < 2) return [];
 
   const units = unitsOf(n, regions);
-  if (step.rule === 'R4') {
-    const offset = step.axis === 'row' ? 0 : n;
-    return step.lines.flatMap(line => units[offset + line].cells);
+  const lineCells = (axis, lines) =>
+    lines.flatMap(line => units[(axis === 'row' ? 0 : n) + line].cells);
+  const regionCells = (keys) => keys.flatMap(key => units[2 * n + key].cells);
+
+  const named = step.unit ? step.unit.cells
+    : step.rule === 'R4' ? lineCells(step.axis, step.lines)
+    : step.rule === 'R6' ? regionCells(step.regions)
+    : [];
+
+  switch (step.rule) {
+    // The squares the rule weighed, which is where the premise points. Recorded
+    // by the rule itself: they are neither the unit nor the answer.
+    case 'R5': return [...named, ...(step.suspects ?? [])];
+    case 'R3': return [...named, ...lineCells(step.axis, [step.line])];
+    case 'R4': return [...named, ...regionCells(step.regions)];
+    case 'R6': return [...named, ...lineCells(step.axis, step.lines)];
+    default: return named;
   }
-  if (step.rule === 'R6') return step.regions.flatMap(key => units[2 * n + key].cells);
-  return [];
 }
 
 /**
@@ -4610,7 +4651,7 @@ function hint(state, level = 1) {
     state: spendHint(state, level, { rule: step.rule, cell: step.cell }),
     step,
     level,
-    look: lookCells(step, n, regions)
+    look: lookCells(step, n, regions, level)
   });
 
   const opts = { collectSteps: true, k, ruleOrder: HINT_RULE_ORDER };
@@ -4696,8 +4737,9 @@ function buildBoard(el, puzzle) {
  */
 function render(cells, state, { focusCell = -1, hintCell = -1, hintOut = [], hintLook = [] } = {}) {
   const { marks, locked, faulted } = state;
-  // The unit a hint is reasoning about. The board dims around it (see
-  // #board.is-looking), which is the whole of a level-1 hint.
+  // What the hint's sentence is pointing at: the unit at level 1, plus whatever
+  // else the premise names from level 2 on (see lookCells). The board dims
+  // around it (see #board.is-looking), which is the whole of a level-1 hint.
   const look = new Set(hintLook);
   // `hint` is where Noam is; `hint-out` is where he cannot be — an elimination
   // the player is being invited to make. Two marks, because a "?" over a square
@@ -5787,6 +5829,15 @@ const regionName = (key) =>
 const lineName = (axis, key, n) =>
   (axis === 'row' ? `שורה ${key + 1}` : `עמודה ${displayCol(n, key)}`);
 
+/**
+ * A unit referred to without naming it again. Colours are a masculine צבע,
+ * rows and columns a feminine שורה/עמודה — so the pronoun has to follow the
+ * kind, not the colour word.
+ */
+const unitPron = (unit) => (unit?.kind === 'region'
+  ? { to: 'אליו', of: 'לו' }
+  : { to: 'אליה', of: 'לה' });
+
 const unitName = (unit, n) => (unit.kind === 'region'
   ? regionName(unit.key)
   : lineName(unit.kind, unit.key, n));
@@ -5839,9 +5890,10 @@ const cellInUnit = (n, cell, unit) => {
 };
 
 /**
- * Level 1: where to look, and nothing else. Whatever the rule argued from —
- * a colour, a line, a set of either — is what the player is pointed at, so
- * the sentence and the highlight on the board always agree.
+ * Level 1: where to look, and nothing else — a sentence, with the board left
+ * untouched. Whatever the rule argued from (a colour, a line, a set of either)
+ * is named, and the player finds it themselves; see lookCells for why the board
+ * stays out of it until there is a premise to point at.
  */
 const hintLead = (step, n) => {
   const target = step.rule === 'R4' ? lineList(step.axis, step.lines, n)
@@ -5868,7 +5920,12 @@ const hintPremise = (step, n) => {
       return `${lineList(step.axis, step.lines, n)} ${step.lines.length === 1 ? 'נוגעת' : 'נוגעות'} ` +
         `רק ${colourList(step.regions, 'ב')}.`;
     case 'R5':
-      return `יש משבצות שאם נועם היה בהן, כל מה שנשאר ${pre('ל', unit)} היה נפסל.`;
+      // Says out loud that the squares can sit *outside* the unit just named.
+      // Without that, "look at the blue" followed by a sentence about squares
+      // the blue does not contain reads as a contradiction — and the board is
+      // lit on both from this level on (see lookCells).
+      return `יש משבצות — ${pre('ב', unit)} או צמודות ${unitPron(step.unit).to} — ` +
+        `שאם נועם היה באחת מהן, כל מה שנשאר ${unitPron(step.unit).of} היה נפסל.`;
     case 'R6':
       return `${colourList(step.regions)} ממלאים יחד את ${lineList(step.axis, step.lines, n)}.`;
     default:
@@ -6114,7 +6171,8 @@ const regionCells = (key) => {
 
 function repaint() {
   render(cells, state, { focusCell, hintCell, hintOut, hintLook });
-  // Dimming everything outside the unit is the level-1 gesture: "look here".
+  // Dimming everything outside what the hint names is the board's half of it.
+  // Nothing is named until level 2, so a level-1 hint leaves the board alone.
   $('board').classList.toggle('is-looking', hintLook.length > 0);
 }
 
@@ -6592,7 +6650,8 @@ $('hint').addEventListener('click', () => {
   const wasLooking = hintLook;
   clearHint();
   hintLevel = level;
-  // Levels 1 and 2 both point at the unit; only the sentence grows between them.
+  // Empty at level 1, the premise's field from level 2 on — see lookCells. A
+  // bad-mark warning has no step, so it keeps whatever was already lit.
   hintLook = h.kind === 'step' ? h.look : wasLooking;
 
   const { n } = state.puzzle;
