@@ -124,11 +124,13 @@
   --ink:        #171512;   /* every keyline and every hard shadow  */
   --ink-rgb:    23, 21, 18; /* --ink, split for rgba() alpha fades  */
   --paper:      #FDF6EC;   /* page ground                          */
+  --paper-rgb:  253, 246, 236; /* --paper, split for the look-at-this wash */
   --panel:      #FFFFFF;   /* raised things: buttons, cards        */
   --band:       #FFE9CC;   /* header band, generating screen       */
   --chrome:     #8A8074;   /* secondary text                       */
   --accent:     #FF5A36;   /* primary action, lives, errors        */
   --accent-2:   #5FE3C0;   /* affirmative: toggles on, hints       */
+  --accent-2-soft: #A7F0DC; /* --accent-2 at 55% over white        */
   --accent-3:   #FFD93D;   /* highlight: hint bar, win dialog      */
 
   /* ── Structure ──
@@ -334,6 +336,90 @@ main {
   letter-spacing: .1em;
   color: var(--chrome);
   margin-bottom: .45rem;
+}
+
+/* ── game picker ──────────────────────────────────────────────────────
+   The two variants are separate games that happen to share a board, not two
+   settings of one game — the rule mix a player actually reasons with inverts
+   between them. Three identical segmented rows said the opposite, so this is
+   deliberately a different *kind* of control: named, pictured, and given the
+   full width above the parameters it governs. */
+.field-games { flex-basis: 100%; }
+
+.game-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .8rem;
+  max-width: 26rem;
+}
+.game-cards input { position: absolute; opacity: 0; pointer-events: none; }
+
+.game-cards label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .45rem;
+  padding: .8rem .6rem .7rem;
+  background: var(--panel);
+  border: var(--edge) solid var(--ink);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: center;
+  transition: background .12s, color .12s, box-shadow .12s, transform .12s;
+}
+.game-cards label:hover { background: var(--band); }
+
+/* Selected reads mainly as "lifted off the page" — the same offset-shadow
+   trick the primary buttons use — with colour only confirming it. Filling the
+   card with --ink did the job but sat on the menu like a hole: these are two
+   cheerful boards to choose between, not an on/off switch. The soft mint is
+   this palette's affirmative colour turned down far enough to stay quiet next
+   to the thumbnails, which are the loudest thing here and should stay that way.
+
+   Keeping the ink text also means the two cards read identically apart from
+   their background, so nothing shifts or restyles as the choice moves. */
+.game-cards input:checked + label {
+  background: var(--accent-2-soft);
+  box-shadow: var(--pop) var(--pop) 0 var(--ink);
+  transform: translate(calc(var(--pop) * -1), calc(var(--pop) * -1));
+}
+.game-cards input:checked + label .game-rule { opacity: .78; }
+.game-cards input:focus-visible + label { outline: 3px solid var(--region-0); outline-offset: 2px; }
+
+.game-name {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1rem;
+  line-height: 1.1;
+}
+.game-rule {
+  font-size: .66rem;
+  font-weight: 700;
+  line-height: 1.25;
+  opacity: .72;
+  text-wrap: balance;
+}
+
+/* Both thumbnails are the same outside size whatever their grid, so the
+   density difference between a 4x4 and an 8x8 is itself part of the message. */
+.game-thumb {
+  display: grid;
+  grid-template-columns: repeat(var(--thumb-n, 4), 1fr);
+  width: 4.4rem;
+  aspect-ratio: 1;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  overflow: hidden;
+  direction: ltr; /* LTR ON PURPOSE — see #board */
+}
+.game-thumb span { position: relative; }
+.game-thumb span.cat::after {
+  content: '';
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
 }
 
 .segmented {
@@ -564,15 +650,16 @@ main {
 
 /* ── X mark. ::before, because effects.js drives the auto-X ripple
    through this pseudo-element. Drawn in the region's paired ink. */
-.cell.is-x::before {
+.cell.is-x::before,
+.cell.hint-out::before {
   content: '';
   position: absolute;
   inset: 28%;
-  opacity: .65;
   background:
     linear-gradient(to bottom right, transparent 40%, currentColor 40%, currentColor 60%, transparent 60%),
     linear-gradient(to bottom left,  transparent 40%, currentColor 40%, currentColor 60%, transparent 60%);
 }
+.cell.is-x::before { opacity: .65; }
 
 /* ══ AVATAR ASSIGNMENT ══════════════════════════════════════════
    Noam is drawn as a background image on ::after, NOT as a child
@@ -646,6 +733,56 @@ main {
   0%, 100% { opacity: .15; }
   50%      { opacity: .55; }
 }
+
+/* The other half of a hint: squares just ruled out. A ghost of the very mark
+   the player is being invited to make — the same X, drawn by the same rule
+   above, faint and turning. Not the "?": that glyph means "Noam might be
+   here", and these are exactly the cells where he cannot be.
+
+   Turning is what keeps the ghost from being read as a mark already made, and
+   90° per cycle closes the loop with no visible snap, since an X turned by a
+   quarter is the same X. Two animations rather than one: the fade has to
+   breathe on the "?"'s rhythm so the two halves of a hint read as one
+   gesture, while the turn has to be linear or it stalls at both ends. One
+   keyframe set cannot carry two timing functions.
+
+   The bare opacity is what prefers-reduced-motion falls back to — a still,
+   faint X — since that block ends animations rather than removing them.
+
+   A cell is never both hinted-out and X-ed: a rule only ever eliminates cells
+   the player has not marked, and any mark clears the hint. */
+.cell.hint-out::before {
+  opacity: .35;
+  animation:
+    hint-out-fade 2.4s ease-in-out infinite,
+    hint-out-turn 2.4s linear infinite;
+}
+@keyframes hint-out-fade {
+  0%, 100% { opacity: .15; }
+  50%      { opacity: .55; }
+}
+@keyframes hint-out-turn {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(90deg); }
+}
+
+/* A level-1 hint says "look at the orange colour" and the board says it too, by
+   stepping back everywhere else. Dimming rather than highlighting, because a
+   ring drawn on ten scattered cells reads as decoration, while a quiet board
+   with one lit unit reads as an instruction.
+
+   A flat wash of paper over the cell, NOT opacity and NOT a filter. The palette
+   carries a deliberately wide lightness ramp (see the note on the region
+   colours), so brightness() pushes the pale fills to white while the dark ones
+   barely move, and the board dims unevenly. A fixed alpha of the paper colour
+   flattens every fill by the same amount, whatever it started as.
+
+   Anything the hint is pointing at stays lit: the unit, the square it names,
+   and the squares it rules out. */
+#board.is-looking .cell:not(.hint-look):not(.hint):not(.hint-out) {
+  box-shadow: inset 0 0 0 100px rgba(var(--paper-rgb), .82);
+}
+#board .cell { transition: box-shadow .25s ease; }
 
 /* Optional colour-number assist. A real child, not a pseudo-element:
    ::before draws the X and ::after draws Noam, and a cell has no third slot. */
@@ -1075,11 +1212,24 @@ dialog.about .dialog-actions { justify-content: center; }
     </div>
 
     <div class="setup">
-      <div class="field">
-        <label for="variant">כמה נועמים בכל שורה</label>
-        <div class="segmented" id="variant-group">
-          <input type="radio" name="variant" id="variant-1" value="1" checked><label for="variant-1">אחד</label>
-          <input type="radio" name="variant" id="variant-2" value="2"><label for="variant-2">שניים</label>
+      <!-- The variant is a game, not a setting: it decides which sizes even
+           exist, so it sits above them and is picked as a named thing with a
+           picture rather than as a third row of segmented buttons. -->
+      <div class="field field-games">
+        <label for="variant">בחרו משחק</label>
+        <div class="game-cards" id="variant-group">
+          <input type="radio" name="variant" id="variant-1" value="1" checked>
+          <label for="variant-1">
+            <span class="game-thumb" data-variant="1" aria-hidden="true"></span>
+            <span class="game-name">נועם אחד</span>
+            <span class="game-rule">אחד בכל שורה, עמודה וצבע</span>
+          </label>
+          <input type="radio" name="variant" id="variant-2" value="2">
+          <label for="variant-2">
+            <span class="game-thumb" data-variant="2" aria-hidden="true"></span>
+            <span class="game-name">פעמיים כי טוב</span>
+            <span class="game-rule">שני נועמים בכל שורה, עמודה וצבע</span>
+          </label>
         </div>
         <select id="variant" class="sr-only" tabindex="-1" aria-hidden="true">
           <option value="1" selected>1</option><option value="2">2</option>
@@ -1646,12 +1796,26 @@ function maxIndependent(n, cells) {
  * generalises them from k=1 to k=2: at k=1 the need is always 1 until the unit
  * is done, and each rule collapses back to its original wording exactly.
  *
+ * `seed` starts the solver from a board already partly worked out — the player's,
+ * when this is called for a hint. Every seeded fact must be *true*, not merely
+ * asserted: a false premise makes the very first rule report a contradiction and
+ * the run returns nothing. game.js checks the player's marks before seeding, for
+ * exactly that reason.
+ *
+ * `ruleOrder` decides which of several applicable rules fires first. It defaults
+ * to cost order, which is what makes `cost` a meaningful difficulty measure —
+ * generation must never pass anything else, since difficulty.js is calibrated
+ * against it. Hints pass a human-difficulty order instead and ignore the cost.
+ *
  * Returns { solved, cost, rulesUsed, placed, cand, steps }.
  *   placed: Int8Array, 1 where a cat is proven
  *   cand:   Int8Array, 1 where a cat is still possible
  *   steps:  ordered log of deductions, used to power hints
  */
-function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k = DEFAULT_K } = {}) {
+function deduce(n, regions, {
+  collectSteps = false, enabledRules = ALL_RULES, k = DEFAULT_K,
+  seed = null, ruleOrder = ALL_RULES
+} = {}) {
   const size = n * n;
   const cand = new Int8Array(size).fill(1);
   const placed = new Int8Array(size);
@@ -1776,12 +1940,14 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
         const lineUi = axis === 'row' ? line : n + line;
         if (need(lineUi) !== m) continue;
 
-        let changed = false;
+        const killed = [];
         for (const j of units[lineUi].cells) {
-          if (regions[j] !== units[ui].key && isFree(j) && eliminate(j)) changed = true;
+          if (regions[j] !== units[ui].key && isFree(j) && eliminate(j)) killed.push(j);
         }
-        if (changed) {
-          if (collectSteps) steps.push({ rule: 'R3', action: 'eliminate', unit: units[ui], axis });
+        if (killed.length) {
+          if (collectSteps) {
+            steps.push({ rule: 'R3', action: 'eliminate', unit: units[ui], axis, line, cells: killed });
+          }
           return true;
         }
       }
@@ -1826,16 +1992,21 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
           if (regNeed < lineNeed) { contradiction = true; return false; }
           if (regNeed !== lineNeed) continue;
 
-          let changed = false;
+          const killed = [];
           for (let i = 0; i < size; i++) {
             if (!isFree(i)) continue;
             if (!regs.has(regions[i])) continue;
             if (lineSet.has(lineOf(n, i))) continue;
-            if (eliminate(i)) changed = true;
+            if (eliminate(i)) killed.push(i);
           }
 
-          if (changed) {
-            if (collectSteps) steps.push({ rule: 'R4', action: 'eliminate', axis, lines: combo });
+          if (killed.length) {
+            if (collectSteps) {
+              steps.push({
+                rule: 'R4', action: 'eliminate', axis, lines: combo,
+                regions: [...regs], cells: killed
+              });
+            }
             return true;
           }
         }
@@ -1871,16 +2042,16 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
       const suspects = new Set(free);
       for (const i of free) for (const j of neighbors8(n, i)) if (isFree(j)) suspects.add(j);
 
-      let changed = false;
+      const killed = [];
       for (const x of suspects) {
         const blocked = new Set(neighbors8(n, x));
         const survivors = free.filter(j => j !== x && !blocked.has(j));
         const after = m - (inUnit.has(x) ? 1 : 0);
-        if (after > 0 && maxIndependent(n, survivors) < after && eliminate(x)) changed = true;
+        if (after > 0 && maxIndependent(n, survivors) < after && eliminate(x)) killed.push(x);
       }
 
-      if (changed) {
-        if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit: units[ui] });
+      if (killed.length) {
+        if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit: units[ui], cells: killed });
         return true;
       }
     }
@@ -1929,16 +2100,23 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
           if (capacity !== totalNeed) continue;
 
           const chosen = new Set(combo.map(r => r.key));
-          let changed = false;
+          const killed = [];
           for (let i = 0; i < size; i++) {
             if (!isFree(i)) continue;
             if (!(union & (1 << lineOf(n, i)))) continue;
             if (chosen.has(regions[i])) continue;
-            if (eliminate(i)) changed = true;
+            if (eliminate(i)) killed.push(i);
           }
 
-          if (changed) {
-            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: [...chosen] });
+          if (killed.length) {
+            if (collectSteps) {
+              const lines = [];
+              for (let line = 0; line < n; line++) if (union & (1 << line)) lines.push(line);
+              steps.push({
+                rule: 'R6', action: 'eliminate', axis,
+                regions: [...chosen], lines, cells: killed
+              });
+            }
             return true;
           }
         }
@@ -1947,10 +2125,23 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
     return false;
   }
 
-  // Cheapest applicable rule always wins, which is what makes the cost score
-  // meaningful as a difficulty measure.
-  const RULES = [['R1', ruleR1], ['R2', ruleR2], ['R3', ruleR3], ['R4', ruleR4], ['R5', ruleR5], ['R6', ruleR6]]
-    .filter(([name]) => enabledRules.includes(name));
+  // Cats first, then the eliminations: place() clears its own neighbourhood, so
+  // seeding the other way round would re-eliminate cells for no reason. Both
+  // loops go through the same primitives as the rules, so a seeded run reaches
+  // exactly the state the rules would have reached on their own.
+  if (seed) {
+    for (const i of seed.placed ?? []) if (!placed[i]) place(i);
+    for (const i of seed.eliminated ?? []) if (!placed[i]) eliminate(i);
+  }
+
+  // The first applicable rule wins, so this order decides which of several
+  // available deductions is taken. Cost order by default — that is what makes
+  // `cost` comparable across boards and what difficulty.js is calibrated
+  // against. See the note on ruleOrder above before passing anything else.
+  const BY_NAME = { R1: ruleR1, R2: ruleR2, R3: ruleR3, R4: ruleR4, R5: ruleR5, R6: ruleR6 };
+  const RULES = ruleOrder
+    .filter(name => enabledRules.includes(name) && BY_NAME[name])
+    .map(name => [name, BY_NAME[name]]);
 
   const total = k * n;
   while (placedCount < total && !contradiction) {
@@ -3046,12 +3237,26 @@ function maxIndependent(n, cells) {
  * generalises them from k=1 to k=2: at k=1 the need is always 1 until the unit
  * is done, and each rule collapses back to its original wording exactly.
  *
+ * `seed` starts the solver from a board already partly worked out — the player's,
+ * when this is called for a hint. Every seeded fact must be *true*, not merely
+ * asserted: a false premise makes the very first rule report a contradiction and
+ * the run returns nothing. game.js checks the player's marks before seeding, for
+ * exactly that reason.
+ *
+ * `ruleOrder` decides which of several applicable rules fires first. It defaults
+ * to cost order, which is what makes `cost` a meaningful difficulty measure —
+ * generation must never pass anything else, since difficulty.js is calibrated
+ * against it. Hints pass a human-difficulty order instead and ignore the cost.
+ *
  * Returns { solved, cost, rulesUsed, placed, cand, steps }.
  *   placed: Int8Array, 1 where a cat is proven
  *   cand:   Int8Array, 1 where a cat is still possible
  *   steps:  ordered log of deductions, used to power hints
  */
-function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k = DEFAULT_K } = {}) {
+function deduce(n, regions, {
+  collectSteps = false, enabledRules = ALL_RULES, k = DEFAULT_K,
+  seed = null, ruleOrder = ALL_RULES
+} = {}) {
   const size = n * n;
   const cand = new Int8Array(size).fill(1);
   const placed = new Int8Array(size);
@@ -3176,12 +3381,14 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
         const lineUi = axis === 'row' ? line : n + line;
         if (need(lineUi) !== m) continue;
 
-        let changed = false;
+        const killed = [];
         for (const j of units[lineUi].cells) {
-          if (regions[j] !== units[ui].key && isFree(j) && eliminate(j)) changed = true;
+          if (regions[j] !== units[ui].key && isFree(j) && eliminate(j)) killed.push(j);
         }
-        if (changed) {
-          if (collectSteps) steps.push({ rule: 'R3', action: 'eliminate', unit: units[ui], axis });
+        if (killed.length) {
+          if (collectSteps) {
+            steps.push({ rule: 'R3', action: 'eliminate', unit: units[ui], axis, line, cells: killed });
+          }
           return true;
         }
       }
@@ -3226,16 +3433,21 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
           if (regNeed < lineNeed) { contradiction = true; return false; }
           if (regNeed !== lineNeed) continue;
 
-          let changed = false;
+          const killed = [];
           for (let i = 0; i < size; i++) {
             if (!isFree(i)) continue;
             if (!regs.has(regions[i])) continue;
             if (lineSet.has(lineOf(n, i))) continue;
-            if (eliminate(i)) changed = true;
+            if (eliminate(i)) killed.push(i);
           }
 
-          if (changed) {
-            if (collectSteps) steps.push({ rule: 'R4', action: 'eliminate', axis, lines: combo });
+          if (killed.length) {
+            if (collectSteps) {
+              steps.push({
+                rule: 'R4', action: 'eliminate', axis, lines: combo,
+                regions: [...regs], cells: killed
+              });
+            }
             return true;
           }
         }
@@ -3271,16 +3483,16 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
       const suspects = new Set(free);
       for (const i of free) for (const j of neighbors8(n, i)) if (isFree(j)) suspects.add(j);
 
-      let changed = false;
+      const killed = [];
       for (const x of suspects) {
         const blocked = new Set(neighbors8(n, x));
         const survivors = free.filter(j => j !== x && !blocked.has(j));
         const after = m - (inUnit.has(x) ? 1 : 0);
-        if (after > 0 && maxIndependent(n, survivors) < after && eliminate(x)) changed = true;
+        if (after > 0 && maxIndependent(n, survivors) < after && eliminate(x)) killed.push(x);
       }
 
-      if (changed) {
-        if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit: units[ui] });
+      if (killed.length) {
+        if (collectSteps) steps.push({ rule: 'R5', action: 'eliminate', unit: units[ui], cells: killed });
         return true;
       }
     }
@@ -3329,16 +3541,23 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
           if (capacity !== totalNeed) continue;
 
           const chosen = new Set(combo.map(r => r.key));
-          let changed = false;
+          const killed = [];
           for (let i = 0; i < size; i++) {
             if (!isFree(i)) continue;
             if (!(union & (1 << lineOf(n, i)))) continue;
             if (chosen.has(regions[i])) continue;
-            if (eliminate(i)) changed = true;
+            if (eliminate(i)) killed.push(i);
           }
 
-          if (changed) {
-            if (collectSteps) steps.push({ rule: 'R6', action: 'eliminate', axis, regions: [...chosen] });
+          if (killed.length) {
+            if (collectSteps) {
+              const lines = [];
+              for (let line = 0; line < n; line++) if (union & (1 << line)) lines.push(line);
+              steps.push({
+                rule: 'R6', action: 'eliminate', axis,
+                regions: [...chosen], lines, cells: killed
+              });
+            }
             return true;
           }
         }
@@ -3347,10 +3566,23 @@ function deduce(n, regions, { collectSteps = false, enabledRules = ALL_RULES, k 
     return false;
   }
 
-  // Cheapest applicable rule always wins, which is what makes the cost score
-  // meaningful as a difficulty measure.
-  const RULES = [['R1', ruleR1], ['R2', ruleR2], ['R3', ruleR3], ['R4', ruleR4], ['R5', ruleR5], ['R6', ruleR6]]
-    .filter(([name]) => enabledRules.includes(name));
+  // Cats first, then the eliminations: place() clears its own neighbourhood, so
+  // seeding the other way round would re-eliminate cells for no reason. Both
+  // loops go through the same primitives as the rules, so a seeded run reaches
+  // exactly the state the rules would have reached on their own.
+  if (seed) {
+    for (const i of seed.placed ?? []) if (!placed[i]) place(i);
+    for (const i of seed.eliminated ?? []) if (!placed[i]) eliminate(i);
+  }
+
+  // The first applicable rule wins, so this order decides which of several
+  // available deductions is taken. Cost order by default — that is what makes
+  // `cost` comparable across boards and what difficulty.js is calibrated
+  // against. See the note on ruleOrder above before passing anything else.
+  const BY_NAME = { R1: ruleR1, R2: ruleR2, R3: ruleR3, R4: ruleR4, R5: ruleR5, R6: ruleR6 };
+  const RULES = ruleOrder
+    .filter(name => enabledRules.includes(name) && BY_NAME[name])
+    .map(name => [name, BY_NAME[name]]);
 
   const total = k * n;
   while (placedCount < total && !contradiction) {
@@ -4101,7 +4333,9 @@ function newGame(puzzle, { isRetry = false } = {}) {
     locked: new Int8Array(size),
     faulted: new Set(),
     strikes: 0,
-    hintUsed: false,
+    // How many hints were taken at each level, not whether one was. A tally,
+    // because the levels are priced differently — see score.js.
+    hints: newHints(),
     isRetry,
     status: 'playing',
     undoStack: [],
@@ -4109,12 +4343,22 @@ function newGame(puzzle, { isRetry = false } = {}) {
   };
 }
 
+const HINT_LEVELS = [1, 2, 3];
+const newHints = () => ({ 1: 0, 2: 0, 3: 0 });
+
+/** Saves written before the ladder carry a boolean; a spent hint was a level 3. */
+const hintsFrom = (saved) =>
+  ({ ...newHints(), ...(saved?.hints ?? (saved?.hintUsed ? { 3: 1 } : null)) });
+
+const anyHint = (hints) => HINT_LEVELS.some(l => hints[l] > 0);
+
 function clone(s) {
   return {
     ...s,
     marks: Int8Array.from(s.marks),
     locked: Int8Array.from(s.locked),
     faulted: new Set(s.faulted),
+    hints: { ...s.hints },
     undoStack: s.undoStack.slice(),
     log: s.log.slice()
   };
@@ -4241,34 +4485,147 @@ function revealAttempt(state, cell, { autoX = false } = {}) {
   return { state: s, events };
 }
 
-const RULE_TEXT = {
-  R1: 'only one cell is left in a row, column or colour',
-  R2: 'the remaining cells are so cramped that this one has to hold a cat',
-  R3: 'a colour is stuck inside a single line, so the rest of that line is out',
-  R4: 'a line only touches one colour, so that colour is out everywhere else',
-  R5: 'every remaining option for one group touches this cell, so no cat fits here',
-  R6: 'a few colours fill the same few lines between them, so nothing else fits there'
-};
+/**
+ * The order the hint tries rules in — easiest for a person to *see*, which is
+ * not the order the solver uses. `deduce` takes the first rule that fires, so
+ * this decides which of several available deductions gets offered: R5 ("this
+ * square touches every option the colour has left") is something a child can
+ * spot, while R4's counting of rows against colours is not, even though the
+ * cost model prices R4 at half of R5.
+ *
+ * Deliberately not RULE_WEIGHTS order, and deliberately not passed anywhere
+ * near generation: difficulty.js is calibrated against the cost that the weight
+ * order produces, so reordering there would re-rate every board in the game.
+ *
+ * R2 sits second on the two-cat game's account. Measured over played-out
+ * boards, R5 fires so readily at k=2 that it pre-empted R2 every single time,
+ * leaving the hint saying only "one square left" (R1) or "these are out" (R5) —
+ * so the rule the variant is actually built on was never once taught. Promoting
+ * it does not make hints more generous, since R1 is already a placement and
+ * already 80% of them; it changes *which* placement is explained, from one the
+ * player would have found by scanning to one they would not have found at all.
+ *
+ * Free on the k=1 side: R2 cannot fire when every unit wants a single cat (see
+ * the inertness assertion in tests/variant.test.js), so its position there is
+ * unobservable.
+ */
+const HINT_RULE_ORDER = ['R1', 'R2', 'R5', 'R3', 'R4', 'R6'];
 
 /**
- * Re-derives the solution from scratch and returns the first proven cat the
- * player has not found yet.
+ * Cells the player has X-ed that actually hide a cat.
  *
- * It deliberately ignores the player's own marks: a hint built on top of a
- * wrong X would itself be wrong, and the whole point of a hint is that it is
- * trustworthy.
+ * An X is free and unchecked — nothing in the game ever pushes back on one — so
+ * the player's marks are assertions, not facts. Seeding a false one into the
+ * solver makes it derive a contradiction and give up, which is why this runs
+ * first and why the hint refuses to reason until the board is clean.
  */
-function hint(state) {
+function findBadMarks(state) {
+  const out = [];
+  for (let i = 0; i < state.marks.length; i++) {
+    if (state.marks[i] === MARK.X && state.puzzle.solution[i] === 1) out.push(i);
+  }
+  return out;
+}
+
+function spendHint(state, level, entry) {
+  const s = clone(state);
+  s.hints[level]++;
+  s.log.push({ ...entry, type: 'hint', level, at: Date.now() });
+  return s;
+}
+
+/**
+ * The cells a hint asks the player to look at — the unit the rule fired on,
+ * which is what levels 1 and 2 talk about and what the board dims around.
+ *
+ * Whatever the sentence names is what lights up. R4 argues from a set of lines,
+ * R6 from a set of colours, and everything else from a single unit.
+ */
+function lookCells(step, n, regions) {
+  if (step.unit) return step.unit.cells;
+
+  const units = unitsOf(n, regions);
+  if (step.rule === 'R4') {
+    const offset = step.axis === 'row' ? 0 : n;
+    return step.lines.flatMap(line => units[offset + line].cells);
+  }
+  if (step.rule === 'R6') return step.regions.flatMap(key => units[2 * n + key].cells);
+  return [];
+}
+
+/**
+ * The next move, deduced from the board the player is actually looking at.
+ *
+ * Seeding the solver with their found cats and their X marks is what makes the
+ * *reason* legible: an unseeded run narrates a state twenty eliminations ahead
+ * of the player, so "this is the only square left" arrives about a colour that
+ * still shows five open squares. Seeded, the rule that fires is one whose
+ * premise is on screen.
+ *
+ * Every seeded fact is checked true first — cats came from the oracle, X marks
+ * go through findBadMarks — so a seeded run cannot contradict, and this cannot
+ * return null on a playable board.
+ *
+ * `level` is how much to give away, and how much to charge for it:
+ *   1  which colour or line to look at
+ *   2  why — the deduction, without its conclusion
+ *   3  the square, or the squares to cross out
+ *
+ * Each level is a separate press of the same button and a separate entry in the
+ * tally, so a player who only ever needs the nudge pays almost nothing for it.
+ * The step itself is recomputed per press rather than cached: `deduce` is
+ * deterministic and the board has not moved, so it comes back identical.
+ *
+ * Returns one of:
+ *   { kind: 'badMark', state, count, level, region?, cell? }
+ *   { kind: 'step', state, step, level, look }
+ */
+function hint(state, level = 1) {
   if (state.status !== 'playing') return null;
   const { n, regions, k = 1 } = state.puzzle;
-  const res = deduce(n, regions, { collectSteps: true, k });
 
-  for (const step of res.steps) {
-    if (step.action !== 'place' || state.locked[step.cell]) continue;
-    const s = clone(state);
-    s.hintUsed = true;
-    s.log.push({ type: 'hint', cell: step.cell, rule: step.rule, at: Date.now() });
-    return { state: s, cell: step.cell, rule: step.rule, text: RULE_TEXT[step.rule] };
+  const bad = findBadMarks(state);
+  if (bad.length) {
+    // Located only at the top of the ladder. Naming the square hands over a
+    // cat's position, so the first two levels send the player back through
+    // their own reasoning instead.
+    return {
+      kind: 'badMark',
+      state: spendHint(state, level, { bad: bad.length }),
+      count: bad.length,
+      level,
+      region: level >= 2 ? regions[bad[0]] : undefined,
+      cell: level >= 3 ? bad[0] : undefined
+    };
+  }
+
+  const seed = { placed: [], eliminated: [] };
+  for (let i = 0; i < state.marks.length; i++) {
+    if (state.locked[i]) seed.placed.push(i);
+    else if (state.marks[i] === MARK.X) seed.eliminated.push(i);
+  }
+
+  const found = (step) => ({
+    kind: 'step',
+    state: spendHint(state, level, { rule: step.rule, cell: step.cell }),
+    step,
+    level,
+    look: lookCells(step, n, regions)
+  });
+
+  const opts = { collectSteps: true, k, ruleOrder: HINT_RULE_ORDER };
+  const seeded = deduce(n, regions, { ...opts, seed });
+  if (seeded.steps[0]) return found(seeded.steps[0]);
+
+  // Unreachable in practice — the rules only fire more readily as eliminations
+  // accumulate, and the generator guarantees an unseeded run solves the board.
+  // Kept so "the hint button always says something" is a property rather than a
+  // hope. Placements only: an unseeded elimination is likely to name cells the
+  // player has already crossed out.
+  const plain = deduce(n, regions, opts);
+  for (const s of plain.steps) {
+    if (s.action !== 'place' || state.locked[s.cell]) continue;
+    return found(s);
   }
   return null;
 }
@@ -4286,7 +4643,7 @@ function postMortem(state) {
   return null;
 }
 
-return { MARK, MAX_STRIKES, newGame, toggleMark, paintMark, undo, revealAttempt, hint, postMortem };
+return { MARK, MAX_STRIKES, newGame, HINT_LEVELS, newHints, hintsFrom, anyHint, toggleMark, paintMark, undo, revealAttempt, HINT_RULE_ORDER, findBadMarks, hint, postMortem };
 })();
 
 const $render = (() => {
@@ -4337,8 +4694,15 @@ function buildBoard(el, puzzle) {
  * Full repaint from state. No diffing — a hundred className writes is well
  * under a frame, and it removes a whole category of stale-DOM bugs.
  */
-function render(cells, state, { focusCell = -1, hintCell = -1 } = {}) {
+function render(cells, state, { focusCell = -1, hintCell = -1, hintOut = [], hintLook = [] } = {}) {
   const { marks, locked, faulted } = state;
+  // The unit a hint is reasoning about. The board dims around it (see
+  // #board.is-looking), which is the whole of a level-1 hint.
+  const look = new Set(hintLook);
+  // `hint` is where Noam is; `hint-out` is where he cannot be — an elimination
+  // the player is being invited to make. Two marks, because a "?" over a square
+  // the hint just ruled out would say the opposite of what it means.
+  const out = new Set(hintOut);
   for (let i = 0; i < cells.length; i++) {
     const el = cells[i];
     el.classList.toggle('is-x', marks[i] === 1);
@@ -4347,6 +4711,8 @@ function render(cells, state, { focusCell = -1, hintCell = -1 } = {}) {
     el.classList.toggle('is-faulted', faulted.has(i));
     el.classList.toggle('focus', i === focusCell);
     el.classList.toggle('hint', i === hintCell);
+    el.classList.toggle('hint-out', out.has(i));
+    el.classList.toggle('hint-look', look.has(i));
   }
 }
 
@@ -4574,7 +4940,7 @@ function makeStorage(store = globalThis.localStorage) {
       locked: [...state.locked],
       faulted: [...state.faulted],
       strikes: state.strikes,
-      hintUsed: state.hintUsed,
+      hints: state.hints,
       isRetry: state.isRetry,
       elapsed
     }),
@@ -4620,14 +4986,33 @@ const RANKS = [
 ];
 
 /**
+ * What each rung of the hint ladder costs. A boolean cannot price a ladder: it
+ * charges "look at the orange colour" exactly what it charges being handed the
+ * square, and nobody would ever press the cheap one. Level 3 keeps the original
+ * halving, so the old behaviour is the top of the new scale rather than a
+ * change to it.
+ *
+ * Multiplicative, so repeated hints keep costing — and floored, so a run that
+ * leaned on them heavily is still worth banking rather than worth abandoning.
+ */
+const HINT_FACTOR = { 1: 0.95, 2: 0.85, 3: 0.5 };
+const HINT_FLOOR = 0.3;
+
+function hintFactor(hints = {}) {
+  let factor = 1;
+  for (const level of Object.keys(HINT_FACTOR)) factor *= HINT_FACTOR[level] ** (hints[level] ?? 0);
+  return Math.max(HINT_FLOOR, factor);
+}
+
+/**
  * Rewards care over speed. The retry multiplier is load-bearing: without it the
  * optimal strategy is to burn strikes carelessly, learn the board, then farm it.
  */
-function scoreRun({ n, difficulty, strikes, hintUsed, isRetry, won, k = 1 }) {
+function scoreRun({ n, difficulty, strikes, hints, isRetry, won, k = 1 }) {
   if (!won) return 0;
   const base = n * 10 * DIFFICULTY_MULTIPLIER[difficulty] * (VARIANT_MULTIPLIER[k] ?? 1);
   const unused = MAX_STRIKES - strikes;
-  return Math.round(base * (1 + 0.25 * unused) * (hintUsed ? 0.5 : 1) * (isRetry ? 0.5 : 1));
+  return Math.round(base * (1 + 0.25 * unused) * hintFactor(hints) * (isRetry ? 0.5 : 1));
 }
 
 /** Returns { index, name, at, next } — `next` is null at the top rank. */
@@ -4637,7 +5022,7 @@ function rankFor(points) {
   return { index, ...RANKS[index], next: RANKS[index + 1] ?? null };
 }
 
-return { DIFFICULTY_MULTIPLIER, MAX_STRIKES, VARIANT_MULTIPLIER, RANKS, scoreRun, rankFor };
+return { DIFFICULTY_MULTIPLIER, MAX_STRIKES, VARIANT_MULTIPLIER, RANKS, HINT_FACTOR, HINT_FLOOR, hintFactor, scoreRun, rankFor };
 })();
 
 const $example = (() => {
@@ -5372,20 +5757,184 @@ const DIFFICULTY = { easy: 'קל', medium: 'בינוני', hard: 'קשה' };
 const RANKS = ['מתחיל', 'גשש', 'עין חדה', 'בלש', 'אלוף המחבואים', 'רואה הכול'];
 
 /**
- * Only R1 produces a `place` step, so only R1 can ever reach a hint today. The
- * other four are here so the map stays complete if that changes.
+ * Columns are numbered right to left, so a column's index is not its name. The
+ * board is language-free and counts from the left; this is the only place that
+ * knows the difference, and everything player-facing goes through it.
  */
-const RULES = {
-  R1: 'זה המקום היחיד שנשאר לנועם',
-  R2: 'נשאר כל כך מעט מקום, שנועם חייב להיות דווקא כאן',
-  R3: 'צבע שלם נדחס לשורה או לעמודה אחת, אז שאר המשבצות שם בחוץ',
-  R4: 'שורה או עמודה נוגעת רק בצבע אחד, אז הצבע הזה בחוץ בכל מקום אחר',
-  R5: 'כל האפשרויות שנשארו לקבוצה אחת נוגעות במשבצת הזאת, אז נועם לא יכול להתחבא בה',
-  R6: 'כמה צבעים ממלאים יחד את אותן שורות, אז שום דבר אחר לא נכנס שם'
+const displayCol = (n, col) => n - col;
+
+/**
+ * Names for the region palette, in the order the colours are defined in
+ * styles.css. Paired with the region's printed number everywhere, because the
+ * palette has near-collisions a player would trip over — two oranges, two
+ * purples — and "the orange colour" is worse than nothing on a board holding
+ * both. The number is on every cell already (render.js), so it always resolves.
+ */
+const REGION_NAMES = [
+  'הכחול', 'הצהוב', 'הבורדו', 'הטורקיז', 'הכתום־אדום', 'הוורוד',
+  'הסגול', 'הירוק', 'הכתום', 'האפור', 'הכחול־ירוק', 'האדום'
+];
+
+/**
+ * Just the colour, never "הצבע הכחול" — the noun is redundant next to a colour
+ * word and stacks a second article the sentence does not need. Kept to real
+ * Hebrew colour words: lime and mint are foods, not colours, and a child
+ * reading "הליים" has to translate before they can look.
+ */
+const regionName = (key) =>
+  (REGION_NAMES[key] ? `${REGION_NAMES[key]} (${key + 1})` : `צבע ${key + 1}`);
+
+const lineName = (axis, key, n) =>
+  (axis === 'row' ? `שורה ${key + 1}` : `עמודה ${displayCol(n, key)}`);
+
+const unitName = (unit, n) => (unit.kind === 'region'
+  ? regionName(unit.key)
+  : lineName(unit.kind, unit.key, n));
+
+/**
+ * ב and ל swallow a following ה — בְּ + הצבע is בצבע, never "בהצבע". Names are
+ * built with the article so they can stand at the head of a sentence, so every
+ * site that puts a preposition in front of one has to go through this.
+ */
+const pre = (prefix, name) => `${prefix}${name.startsWith('ה') ? name.slice(1) : name}`;
+
+/** "א", "א וב", "א, ב וג" — with a maqaf before a numeral, as "ו8" does not read. */
+const joinHe = (parts) => {
+  if (parts.length <= 1) return parts[0] ?? '';
+  const last = parts[parts.length - 1];
+  return `${parts.slice(0, -1).join(', ')} ו${/^\d/.test(last) ? '־' : ''}${last}`;
 };
 
-const hintLine = (row, col, rule) =>
-  `שורה ${row}, עמודה ${col} — ${RULES[rule] ?? RULES.R1}.`;
+/**
+ * "הכחול (1) והכתום (9)". A preposition is applied to every item rather than
+ * only the first — "בכחול (1) ובכתום (9)" — since that is how a list of
+ * prepositional phrases reads in Hebrew.
+ */
+const colourList = (keys, prefix = '') => joinHe(
+  keys.map(key => (prefix ? pre(prefix, regionName(key)) : regionName(key)))
+);
+
+/**
+ * "שורה 3" alone, "שורות 3 ו־5" together. Sorted by the number the player sees,
+ * which for columns runs opposite to the internal index — otherwise a list of
+ * columns comes out counting backwards.
+ */
+const lineList = (axis, keys, n) => {
+  if (keys.length <= 1) return lineName(axis, keys[0], n);
+  const shown = keys.map(key => (axis === 'row' ? key + 1 : displayCol(n, key))).sort((a, b) => a - b);
+  return `${axis === 'row' ? 'שורות' : 'עמודות'} ${joinHe(shown.map(String))}`;
+};
+
+const cellName = (n, cell) => `שורה ${Math.floor(cell / n) + 1}, עמודה ${displayCol(n, cell % n)}`;
+
+/**
+ * A cell named relative to the unit being talked about. "In row 2 one square is
+ * left — row 2, column 8" says row 2 twice; inside a row, the column alone
+ * locates it. Regions have no such shorthand and take both coordinates.
+ */
+const cellInUnit = (n, cell, unit) => {
+  if (unit?.kind === 'row') return `עמודה ${displayCol(n, cell % n)}`;
+  if (unit?.kind === 'col') return `שורה ${Math.floor(cell / n) + 1}`;
+  return cellName(n, cell);
+};
+
+/**
+ * Level 1: where to look, and nothing else. Whatever the rule argued from —
+ * a colour, a line, a set of either — is what the player is pointed at, so
+ * the sentence and the highlight on the board always agree.
+ */
+const hintLead = (step, n) => {
+  const target = step.rule === 'R4' ? lineList(step.axis, step.lines, n)
+    : step.rule === 'R6' ? colourList(step.regions)
+    : unitName(step.unit, n);
+  return `תסתכל על ${target}.`;
+};
+
+/**
+ * Level 2: the deduction, stopped before its conclusion. The player is told
+ * what is true about the unit and left to draw the consequence themselves —
+ * which is the whole difference between being taught and being told.
+ */
+const hintPremise = (step, n) => {
+  const unit = step.unit ? unitName(step.unit, n) : '';
+  switch (step.rule) {
+    case 'R1':
+      return `${pre('ב', unit)} נשארה רק משבצת אחת שלא סומנה.`;
+    case 'R2':
+      return `${pre('ב', unit)} נשאר כל כך מעט מקום, שיש משבצת שבלעדיה כבר אין איפה להחביא את כולם.`;
+    case 'R3':
+      return `כל מה שנשאר ${pre('ל', unit)} כלוא ${pre('ב', lineName(step.axis, step.line, n))}.`;
+    case 'R4':
+      return `${lineList(step.axis, step.lines, n)} ${step.lines.length === 1 ? 'נוגעת' : 'נוגעות'} ` +
+        `רק ${colourList(step.regions, 'ב')}.`;
+    case 'R5':
+      return `יש משבצות שאם נועם היה בהן, כל מה שנשאר ${pre('ל', unit)} היה נפסל.`;
+    case 'R6':
+      return `${colourList(step.regions)} ממלאים יחד את ${lineList(step.axis, step.lines, n)}.`;
+    default:
+      return hintLead(step, n);
+  }
+};
+
+/**
+ * Level 3: the deduction and its conclusion, in terms of the board on screen.
+ *
+ * Takes a deduction step rather than a rule name: the step carries which colour
+ * or which rows the rule fired on, and naming them is the whole difference
+ * between "this is the only place left" — about a colour the player can see has
+ * five squares open — and a sentence they can check.
+ */
+const hintText = (step, n) => {
+  const unit = step.unit ? unitName(step.unit, n) : '';
+
+  switch (step.rule) {
+    case 'R1':
+      return `${pre('ב', unit)} נשארה רק משבצת אחת שלא סומנה — ` +
+        `${cellInUnit(n, step.cell, step.unit)}. נועם שם.`;
+    case 'R2':
+      return `${pre('ב', unit)} נשאר כל כך מעט מקום, שבלי ${cellInUnit(n, step.cell, step.unit)} ` +
+        'כבר אין איפה להחביא את כולם. נועם שם.';
+    case 'R3': {
+      const line = lineName(step.axis, step.line, n);
+      return `כל מה שנשאר ${pre('ל', unit)} כלוא ${pre('ב', line)} — ` +
+        `אז כל השאר ${pre('ב', line)} בחוץ.`;
+    }
+    case 'R4':
+      return `${lineList(step.axis, step.lines, n)} ${step.lines.length === 1 ? 'נוגעת' : 'נוגעות'} ` +
+        `רק ${colourList(step.regions, 'ב')} — ` +
+        (step.regions.length === 1 ? 'אז הצבע הזה' : 'אז הצבעים האלה') +
+        ' בחוץ בכל מקום אחר.';
+    case 'R5':
+      // Stated as the consequence rather than the mechanism: a cat here would
+      // leave the unit with nowhere to go, which is why the square is out.
+      return (step.cells.length === 1
+        ? `אם נועם היה במשבצת המסומנת, כל מה שנשאר ${pre('ל', unit)} היה נפסל. אז הוא לא שם.`
+        : `אם נועם היה באחת המשבצות המסומנות, כל מה שנשאר ${pre('ל', unit)} היה נפסל. ` +
+          'אז הוא לא באף אחת מהן.');
+    case 'R6':
+      return `${colourList(step.regions)} ממלאים יחד את ${lineList(step.axis, step.lines, n)} — ` +
+        'אז שום צבע אחר לא נכנס שם.';
+    default:
+      return `${cellName(n, step.cell)} — נועם שם.`;
+  }
+};
+
+/**
+ * An X sitting on a cat. The square is deliberately not named: that would hand
+ * over a cat's position for free, and the point of the warning is to send the
+ * player back through their own reasoning while it can still be repaired.
+ */
+const badMarkLine = ({ count, level, region, cell }, n) => {
+  if (level >= 3 && cell !== undefined) {
+    return `${cellName(n, cell)} — נועם מתחבא שם, והאיקס הזה שגוי. תמחקו אותו ותבדקו מה נבנה עליו.`;
+  }
+  if (level >= 2 && region !== undefined) {
+    return `האיקס השגוי ${pre('ב', regionName(region))}. תבדקו מה גרם לכם לסמן אותו.`;
+  }
+  return count === 1
+    ? 'יש על הלוח איקס אחד שלא יכול להיות נכון. כדאי לעבור שוב על הסימונים — כל מה שבא אחריו נבנה עליו.'
+    : `יש על הלוח ${count} איקסים שלא יכולים להיות נכונים. כדאי לעבור שוב על הסימונים — כל מה שבא אחריהם נבנה עליהם.`;
+};
 
 /** 1 and 2 read badly as digits mid-sentence; 3 ends the game, so it never gets here. */
 const MISTAKES = { 1: 'טעות אחת', 2: 'שתי טעויות' };
@@ -5419,7 +5968,12 @@ const winLine = ({ n, difficulty, seconds, strikes, best, k = 1 }) =>
   (strikes === 0 ? ' — בלי טעות אחת.' : `, עם ${MISTAKES[strikes] ?? `${strikes} טעויות`}.`) +
   (best !== null ? ` השיא שלך: ${best}.` : '');
 
-const HINT_USED = 'השתמשת ברמז, אז המשחק הזה שווה חצי ולא נשמר כשיא.';
+/**
+ * Hints are priced by level now, so the number is worth showing — a nudge that
+ * cost 5% should not read like the halving a full reveal costs.
+ */
+const hintUsedLine = (factor) =>
+  `השתמשת ברמזים, אז המשחק הזה שווה ${Math.round(factor * 100)}% ולא נשמר כשיא.`;
 
 const WIN_TITLE = 'מצאת את כולם!';
 const LOSS_TITLE = 'נגמרו החיים';
@@ -5483,16 +6037,20 @@ const nextWorkingPhrase = (prev) => {
 
 const CLEAR_CONFIRM = 'זה ימחק את הדירוג, הנקודות וההגדרות שלך לצמיתות. להמשיך?';
 
-return { DIFFICULTY, RANKS, hintLine, howtoRules, VARIANT_TAG, winLine, HINT_USED, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM };
+/** The hint button relabels itself as the ladder climbs. */
+const HINT_BUTTON = 'רמז';
+const HINT_BUTTON_MORE = 'עוד רמז';
+
+return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, winLine, hintUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE };
 })();
 
 (() => {
 const { generateAsync } = $generateAsync;
-const { newGame, toggleMark, paintMark, undo, revealAttempt, postMortem, hint, MARK, MAX_STRIKES } = $game;
+const { newGame, toggleMark, paintMark, undo, revealAttempt, postMortem, hint, hintsFrom, anyHint, MARK, MAX_STRIKES } = $game;
 const { buildBoard, render } = $render;
 const { attachInput } = $input;
 const { makeStorage } = $storage;
-const { scoreRun, rankFor } = $score;
+const { scoreRun, rankFor, hintFactor } = $score;
 const { idx, rowOf, colOf, catCells } = $board;
 const { EXAMPLES } = $example;
 const fx = $effects;
@@ -5523,6 +6081,9 @@ let state = null;
 let cells = [];
 let focusCell = 0;
 let hintCell = -1;
+let hintOut = [];   // cells the last hint ruled out, for an elimination hint
+let hintLook = [];  // the unit a hint is talking about; the board dims around it
+let hintLevel = 0;  // 0 none, then 1 where to look, 2 why, 3 the square itself
 let startedAt = 0;
 let elapsedBase = 0;   // seconds carried over from a resumed game
 let tick = null;
@@ -5540,12 +6101,37 @@ const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0
 // The board itself stays LTR regardless of page direction (see the "LTR ON
 // PURPOSE" note on .board in styles.css), but Hebrew reads right-to-left — so
 // a column number spoken in a sentence should count from the right, the
-// reverse of colOf's left-origin index.
-const displayCol = (n, cell) => n - colOf(n, cell);
+// reverse of colOf's left-origin index. The rule itself lives in strings.js
+// with the rest of the copy; this is the by-cell convenience over it.
+const displayCol = (n, cell) => t.displayCol(n, colOf(n, cell));
+
+const regionCells = (key) => {
+  const out = [];
+  const { regions } = state.puzzle;
+  for (let i = 0; i < regions.length; i++) if (regions[i] === key) out.push(i);
+  return out;
+};
+
+function repaint() {
+  render(cells, state, { focusCell, hintCell, hintOut, hintLook });
+  // Dimming everything outside the unit is the level-1 gesture: "look here".
+  $('board').classList.toggle('is-looking', hintLook.length > 0);
+}
+
+/** Any real move invalidates the hint that was on screen, and resets the ladder. */
+function clearHint() {
+  hintCell = -1;
+  hintOut = [];
+  hintLook = [];
+  hintLevel = 0;
+  $('hint-text').hidden = true;
+  $('hint').disabled = false;
+  $('hint').textContent = t.HINT_BUTTON;
+}
 
 function paint(events = []) {
-  hintCell = -1; // any real move invalidates the last hint's "?" marker
-  render(cells, state, { focusCell, hintCell });
+  clearHint();
+  repaint();
   for (const e of events) handleEvent(e);
 }
 
@@ -5696,13 +6282,13 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
     state.locked = Int8Array.from(restore.locked);
     state.faulted = new Set(restore.faulted);
     state.strikes = restore.strikes;
-    state.hintUsed = restore.hintUsed;
+    state.hints = hintsFrom(restore);
     state.isRetry = restore.isRetry;
   }
 
   cells = buildBoard($('board'), puzzle);
   focusCell = 0;
-  hintCell = -1;
+  clearHint();
   elapsedBase = restore?.elapsed ?? 0;
   startedAt = Date.now();
 
@@ -5715,7 +6301,7 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
   renderAssists();
   renderPips();
   showScreen('game');
-  render(cells, state, { focusCell, hintCell });
+  repaint();
   if (!restore) fx.dealIn(cells, puzzle.n);
   startClock();
   scheduleSave();
@@ -5791,12 +6377,15 @@ function finishWin() {
   const points = scoreRun({
     n, difficulty, k,
     strikes: state.strikes,
-    hintUsed: state.hintUsed,
+    hints: state.hints,
     isRetry: state.isRetry,
     won: true
   });
   storage.addPoints(points);
-  if (!state.hintUsed) storage.recordBest(n, difficulty, seconds, k);
+  // A time record means a clean run: any hint at any level disqualifies it,
+  // even though points are only graded down.
+  const usedHint = anyHint(state.hints);
+  if (!usedHint) storage.recordBest(n, difficulty, seconds, k);
   renderRank();
 
   const best = storage.getBest(n, difficulty, k);
@@ -5809,8 +6398,8 @@ function finishWin() {
   });
   $('result-score').hidden = false;
   $('result-points').textContent = points.toLocaleString();
-  $('result-postmortem').hidden = !state.hintUsed;
-  if (state.hintUsed) $('result-postmortem').textContent = t.HINT_USED;
+  $('result-postmortem').hidden = !usedHint;
+  if (usedHint) $('result-postmortem').textContent = t.hintUsedLine(hintFactor(state.hints));
   $('result-retry').hidden = true;
   $('result-new').textContent = t.NEW_PUZZLE;
   $('result').classList.add('is-win');   // the win dialog styling keys off this
@@ -5865,7 +6454,7 @@ const handlers = {
   onRollback(cell, mark) {
     const r = paintMark(state, cell, mark);
     state = r.state;
-    render(cells, state, { focusCell, hintCell });
+    repaint();
   },
 
   onReveal(cell) {
@@ -5900,7 +6489,7 @@ const handlers = {
     if (key === 'ArrowLeft') c = Math.max(0, c - 1);
     if (key === 'ArrowRight') c = Math.min(n - 1, c + 1);
     focusCell = idx(n, r, c);
-    render(cells, state, { focusCell, hintCell });
+    repaint();
   },
 
   onToggleFocused() { handlers.onToggle(focusCell); },
@@ -5993,20 +6582,45 @@ $('back').addEventListener('click', () => {
 
 $('hint').addEventListener('click', () => {
   if (!settings.hint || !state || state.status !== 'playing') return;
-  const h = hint(state);
+  if (hintLevel >= 3) return;
+
+  const level = hintLevel + 1;
+  const h = hint(state, level);
   if (!h) return;
   state = h.state;
-  focusCell = h.cell;
-  hintCell = h.cell;
+
+  const wasLooking = hintLook;
+  clearHint();
+  hintLevel = level;
+  // Levels 1 and 2 both point at the unit; only the sentence grows between them.
+  hintLook = h.kind === 'step' ? h.look : wasLooking;
+
+  const { n } = state.puzzle;
+  if (h.kind === 'badMark') {
+    if (h.region !== undefined) hintLook = regionCells(h.region);
+    if (h.cell !== undefined) { focusCell = h.cell; hintCell = h.cell; }
+    $('hint-text').textContent = t.badMarkLine(h, n);
+  } else if (level === 1) {
+    $('hint-text').textContent = t.hintLead(h.step, n);
+  } else if (level === 2) {
+    $('hint-text').textContent = t.hintPremise(h.step, n);
+  } else {
+    if (h.step.action === 'place') {
+      focusCell = h.step.cell;
+      hintCell = h.step.cell;
+    } else {
+      hintOut = h.step.cells;
+      focusCell = h.step.cells[0];
+    }
+    $('hint-text').textContent = t.hintText(h.step, n);
+  }
+
   audio.play('hint');
   haptics.play('hint');
-  $('hint-text').textContent = t.hintLine(
-    rowOf(state.puzzle.n, h.cell) + 1,
-    displayCol(state.puzzle.n, h.cell),
-    h.rule
-  );
   $('hint-text').hidden = false;
-  render(cells, state, { focusCell, hintCell });
+  $('hint').disabled = hintLevel >= 3;
+  $('hint').textContent = hintLevel >= 3 ? t.HINT_BUTTON : t.HINT_BUTTON_MORE;
+  repaint();
   scheduleSave();
 });
 
@@ -6080,6 +6694,27 @@ addEventListener('visibilitychange', () => {
 /* ───────────────────────────── boot ───────────────────────────── */
 
 /**
+ * Fills each game card's thumbnail with that variant's worked example — the
+ * same board the How to play card teaches from, and a real solution rather
+ * than decoration (tests/example.test.js holds both to the rules).
+ *
+ * Built once: the examples never change.
+ */
+function buildGameCards() {
+  for (const thumb of document.querySelectorAll('.game-thumb')) {
+    const { n, regions, cols, k } = EXAMPLES[Number(thumb.dataset.variant)];
+    const cats = new Set(catCells(n, cols, k));
+    thumb.style.setProperty('--thumb-n', n);
+    thumb.replaceChildren(...Array.from({ length: n * n }, (_, i) => {
+      const cell = document.createElement('span');
+      cell.style.background = `var(--region-${regions[i]})`;
+      if (cats.has(i)) cell.className = 'cat';
+      return cell;
+    }));
+  }
+}
+
+/**
  * The How to play card, redrawn whenever the variant changes — both the rules
  * and the worked board describe the variant, not the puzzle in play, so they
  * follow the picker rather than the current game.
@@ -6110,6 +6745,7 @@ function buildHowto() {
 }
 
 attachInput($('board'), handlers);
+buildGameCards();
 applyLastConfig();
 buildHowto();
 syncHiddenSelects();
