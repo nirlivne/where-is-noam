@@ -102,10 +102,11 @@
 
      Ten separable hues do not survive deuteranopia — they run out
      around six. That is why this palette carries a wide LIGHTNESS
-     ramp as well as hue, and why every region boundary gets a heavy
-     border (--edge). Region shape must be readable from geometry
-     alone, with the colour switched off entirely. Do not thin the
-     borders to make the board prettier. */
+     ramp as well as hue, and why a region boundary is drawn several
+     times heavier than the dividers inside a region (--region-line).
+     Region shape must be readable from geometry alone, with the
+     colour switched off entirely. Do not level the two line weights
+     to make the board prettier. */
 
   --region-0: #2B44FF;  --region-0-ink: #FFFFFF;  /* electric blue  */
   --region-1: #FFD93D;  --region-1-ink: #171512;  /* sun yellow     */
@@ -139,11 +140,14 @@
      thinning them dissolves the whole style. */
   --edge:     3px;
   --hairline: 1px;
-  /* Cell grid line. Purely a between-cells divider (region shape now reads
-     from fill colour + lightness ramp, not from a border — see the #board
-     comment), so brightness here is a free aesthetic choice, not an
-     accessibility one. */
-  --grid-line: rgb(255 255 255 / .8);
+  /* The board draws two kinds of line, and the difference between them is
+     the whole point: --grid-line is a divider between two squares of the
+     same region, --region-line is a boundary between regions. Both white —
+     the boundary separates by weight, not by hue, so it reads the same over
+     a dark fill and a pale one. Solid where the divider is translucent, and
+     thicker; the thickness comes from .cell's --edge-w. */
+  --grid-line:   rgb(255 255 255 / .8);
+  --region-line: #fff;
   --pop:      4px;
   --pop-sm:   3px;
   --r-lg:     18px;
@@ -670,6 +674,12 @@ main {
      square. Only the chrome around the board flips. */
   direction: ltr;
 
+  /* The reference for the cell keylines. They are a fraction of a square,
+     not a fixed pixel count — see .cell — and a square is this box over
+     --n. Safe as a size container: width and aspect-ratio are both given
+     above, so nothing here is measured from the contents. */
+  container-type: size;
+
   /* Required: stops the browser stealing drag gestures for scroll and zoom. */
   touch-action: none;
   user-select: none;
@@ -681,12 +691,57 @@ main {
   position: relative;
   background: var(--region-color);
   color: var(--region-ink);
-  border: 2px solid var(--grid-line);
+  /* Keylines scale with the square, or the board reads as a different
+     drawing at every size: a fixed 2px is 4% of a 6x6 square on a desktop
+     and 13% of a 12x12 one on a phone, which is why the lines came out
+     heavy on mobile. --line (below) holds every board at 3.6% of a square.
+     Neighbours each draw their own half, so the line between two squares is
+     twice it. */
+  border: var(--line) solid var(--grid-line);
+
+  /* The extra thickness that marks a region boundary, drawn as an inset
+     band rather than a fatter border. A fatter border would shrink the
+     padding box that ::before and the "?" measure themselves against, and
+     marks would sit a pixel off centre on region edges only. A shadow costs
+     no layout at all, and white-on-fill is indistinguishable from a wider
+     white border. Both squares across a boundary draw their band, so the
+     boundary comes out 5.6x the divider inside a region.
+     .is-faulted replaces this box-shadow for the length of its flash; the
+     ring it draws covers the same perimeter, so nothing shows through. */
+  --edge-w: calc(1.8 * var(--line));
+  --edge-t: 0 0 0 0 transparent;
+  --edge-r: 0 0 0 0 transparent;
+  --edge-b: 0 0 0 0 transparent;
+  --edge-l: 0 0 0 0 transparent;
+  box-shadow: var(--edge-t), var(--edge-r), var(--edge-b), var(--edge-l);
+
   cursor: pointer;
+  /* The sizing reference for anything drawn inside a square. The X and Noam
+     are pseudo-elements sized with inset percentages, which already resolve
+     against this box; container-type lets the "?" — a real glyph, so
+     font-size, not inset — measure itself against the very same box. Cells
+     are sized by the grid tracks, never by their contents, so size
+     containment costs nothing here. */
+  container-type: size;
 }
 
-/* Inter-region edges no longer get a heavy border; render.js still
-   tags cells with edge-top/right/bottom/left but these are now no-ops. */
+/* One number for every keyline on the board. The px is what browsers
+   without container query units get — a flat line at every board size,
+   which is where this started, rather than nothing. */
+.cell { --line: 1.5px; }
+@supports (width: 1cqmin) {
+  .cell { --line: max(.5px, calc(1.8cqmin / var(--n))); }
+}
+
+/* Region boundaries. render.js tags both squares that meet across one, so
+   each lays its band down its own side and the boundary reads as one line.
+   White like the dividers, and heavier: the difference is thickness, which
+   survives a colour-blind reading and a greyscale print — see the palette
+   note at the top of this file. */
+.cell.edge-top    { --edge-t: inset 0 var(--edge-w) 0 0 var(--region-line); }
+.cell.edge-right  { --edge-r: inset calc(-1 * var(--edge-w)) 0 0 0 var(--region-line); }
+.cell.edge-bottom { --edge-b: inset 0 calc(-1 * var(--edge-w)) 0 0 var(--region-line); }
+.cell.edge-left   { --edge-l: inset var(--edge-w) 0 0 0 var(--region-line); }
 
 /* ── X mark. ::before, because effects.js drives the auto-X ripple
    through this pseudo-element. Drawn in the region's paired ink. */
@@ -760,7 +815,15 @@ main {
   justify-content: center;
   font-family: var(--display);
   font-weight: 900;
+  /* Cell-relative, or the two halves of a hint drift apart: the board runs
+     from a 92px square (6x6, desktop) to a 31px one (12x12, phone), and a
+     fixed rem made the "?" less than half the X's height at one end and
+     bigger than it at the other. 60cqmin puts the glyph's cap height at ~43%
+     of the cell, which is the X's 44% box — cqmin and the X's inset both
+     measure the cell's padding box, so the match holds at every size.
+     The rem above it is the fallback for browsers without container queries. */
   font-size: 1.6rem;
+  font-size: 60cqmin;
   line-height: 1;
   color: currentColor;
   pointer-events: none;
@@ -1420,8 +1483,14 @@ dialog.about .dialog-actions { justify-content: center; }
            informational pair second. -->
       <div class="tools" role="toolbar" aria-label="פעולות">
         <div class="tools-group">
-          <button class="tool-btn" id="undo" type="button" title="בטל" aria-label="בטל" disabled>↶</button>
-          <button class="tool-btn" id="redo" type="button" title="שחזר" aria-label="שחזר" disabled>↷</button>
+          <!-- Mirrored for RTL, on purpose. U+21B6/21B7 are directional, not
+               rotational: ↶ points left and ↷ points right. Hebrew runs
+               right-to-left, so "back" is rightward and undo takes ↷.
+               Unmirrored, each arrow points straight at the other button.
+               (↺/↻ would need no such swap — a rotation reads the same either
+               way round, which is exactly why they are the safer glyph.) -->
+          <button class="tool-btn" id="undo" type="button" title="בטל" aria-label="בטל" disabled>↷</button>
+          <button class="tool-btn" id="redo" type="button" title="שחזר" aria-label="שחזר" disabled>↶</button>
         </div>
         <div class="tools-group">
           <button class="btn btn-small" id="check" type="button">בדיקה</button>
@@ -1435,7 +1504,7 @@ dialog.about .dialog-actions { justify-content: center; }
     <div class="legend">
       <span><b class="k">לחיצה</b> או <b class="k">גרירה</b> — סימון משבצת ריקה</span>
       <span><b class="k">לחיצה כפולה</b> או <b class="k">לחיצה ארוכה</b> — מציאת נועם</span>
-      <!-- <span><b class="k k-glyph">↶ ↷</b> — ביטול ושחזור של סימונים</span> -->
+      <!-- <span><b class="k k-glyph">↷ ↶</b> — ביטול ושחזור של סימונים</span> -->
     </div>
   </section>
 
