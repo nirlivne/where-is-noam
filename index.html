@@ -497,9 +497,97 @@ main {
 }
 .btn-small:active { transform: translate(calc(var(--pop-sm) * -1), var(--pop-sm)); }
 
-/* Bare button, no wrapper: when there is no save its own [hidden] collapses
-   the gap too, instead of leaving an empty row above the setup. */
-.menu-resume { margin-bottom: 2.4rem; }
+/* ── saved games ──────────────────────────────────────────────────────
+   Deliberately not a button. A pill here read as a rival to "new game" at the
+   bottom of the menu — same shape, same weight, and the accent had to jump
+   between them to say which one was live. A card of a board you already left
+   is a different kind of thing, so the two stop competing and the accent can
+   stay put. Kept low and horizontal: this is a way back in, not a third
+   picker, and it must not push the setup off a phone screen. */
+.menu-saves { margin-bottom: 2.4rem; }
+
+.saves-label {
+  display: block;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--chrome);
+  margin-bottom: .45rem;
+}
+
+.saves-list { display: grid; gap: .5rem; max-width: 26rem; }
+
+.save-card {
+  display: flex;
+  align-items: stretch;
+  background: var(--panel);
+  border: var(--edge) solid var(--ink);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.save-card:hover { background: var(--band); }
+
+/* The whole row is the resume target; the ✕ beside it is the only other move. */
+.save-go {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .5rem .6rem;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.save-go:focus-visible,
+.save-drop:focus-visible { outline: 3px solid var(--region-0); outline-offset: -3px; }
+
+/* Small enough to read as an icon of the board rather than a second preview of
+   it — the game cards below own that job. */
+.save-thumb { width: 2.1rem; border-width: 1.5px; border-radius: 4px; flex: none; }
+.save-thumb span.cat::after { inset: 18%; border-width: 1px; }
+
+.save-text { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.save-name {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: .88rem;
+  line-height: 1.1;
+}
+.save-meta {
+  font-size: .66rem;
+  font-weight: 700;
+  color: var(--chrome);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Says "forward" without taking the accent — the resume affordance earns its
+   pull from the picture beside it, not from colour. */
+.save-cue {
+  margin-inline-start: auto;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: .8rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.save-drop {
+  flex: none;
+  width: 2.2rem;
+  background: none;
+  border: 0;
+  border-inline-start: 2px solid var(--band);
+  color: var(--chrome);
+  font-size: .8rem;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.save-drop:hover { background: var(--accent); color: #fff; }
 
 .menu-commit { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
 
@@ -580,18 +668,30 @@ main {
   aspect-ratio: 1;
   position: relative;
   border: 2px solid var(--grid-line);
+  /* So the sticker ring below can be measured against the cell. Both axes
+     are determinate — the track width is --mini-cell, the height follows
+     from aspect-ratio — so this contains nothing that is sized by content. */
+  container-type: size;
 }
 /* Same 16% as a real square (see .cell.is-cat::after): this grid is what
    teaches the symbol, on the same region fills, so it has to be the same
    drawing. The ring stays a border rather than a box-shadow — border-box is
    set globally, so it grows inwards and cannot overflow a mini cell the way
-   the board's shadow ring could. */
+   the board's shadow ring could.
+
+   The ring is cell-relative for the same reason the board's is, and it bites
+   harder here: main.js sizes this grid at 8.8rem however many columns it has,
+   so the k=1 example runs 4 columns of 35px and the k=2 one runs 8 of 18px.
+   A flat 2px ring is 11% of the small cell and leaves the face a smudge. */
 .mini-grid div.cat::after {
   content: '';
   position: absolute; inset: 16%;
   border-radius: 50%;
   border: 2px solid var(--ink);
   background: #fff var(--avatar-1-sm, var(--avatar-1)) center / cover no-repeat;
+}
+@supports (width: 1cqmin) {
+  .mini-grid div.cat::after { border-width: 6cqmin; }
 }
 .mini figcaption {
   margin-top: .55rem;
@@ -1405,10 +1505,15 @@ dialog.about .dialog-actions { justify-content: center; }
     <h1 class="display">איפה<br>נועם?</h1>
     <p class="tagline">מצאו אותו בכל שורה, בכל עמודה ובכל צבע.</p>
 
-    <!-- Resume sits above the setup because it ignores it: it reopens a saved
-         board rather than composing a new one. Everything below this line is
-         the sentence "new game" ends. -->
-    <button class="btn menu-resume" id="resume" type="button" hidden>המשך משחק</button>
+    <!-- Saved games sit above the setup because they ignore it: they reopen a
+         board rather than composing one. They are cards, not a button, so they
+         cannot be mistaken for the commit at the bottom — a card shows a game
+         that already exists, and the accent never has to move between the two.
+         Everything below this line is the sentence "new game" ends. -->
+    <div class="menu-saves" id="saves" hidden>
+      <span class="saves-label">המשחקים שלכם</span>
+      <div class="saves-list" id="saves-list"></div>
+    </div>
 
     <div class="setup">
       <!-- The variant is a game, not a setting: it decides which sizes even
@@ -1471,7 +1576,7 @@ dialog.about .dialog-actions { justify-content: center; }
          as a quiet link — it is help, not a second way forward, so it must not
          read as a button of the same weight. -->
     <div class="menu-commit">
-      <button class="btn" id="new-game" type="button">משחק חדש</button>
+      <button class="btn btn-primary" id="new-game" type="button">משחק חדש</button>
       <button class="btn-quiet" id="open-howto" type="button">איך משחקים?</button>
     </div>
   </section>
@@ -5206,11 +5311,19 @@ const KEYS = {
   settings: 'cats.settings',
   points: 'cats.points',
   best: 'cats.best',
-  save: 'cats.save',
+  save: 'cats.save',   // legacy single slot; migrated into saveKey on first read
   seenHowto: 'cats.seenHowto',
   lastConfig: 'cats.lastConfig',
   visitor: 'cats.visitor'
 };
+
+// A game in progress is saved per variant, for the same reason best times are
+// (see getBest): the two variants are different puzzles, and starting a
+// two-in-a-row board used to silently throw away a plain board someone was in
+// the middle of. The variants that exist are a game rule, not a storage fact —
+// this list only has to cover every k the menu can offer.
+const SAVE_SLOTS = [1, 2];
+const saveKey = (k) => `cats.save.k${k}`;
 
 const DEFAULT_SETTINGS = {
   // timer and hint have no settings UI (see index.html) — both are always on —
@@ -5247,6 +5360,19 @@ function makeStorage(store = globalThis.localStorage) {
   const write = (key, value) => {
     try { store.setItem(key, JSON.stringify(value)); } catch { /* quota or private mode */ }
   };
+  const remove = (key) => { try { store.removeItem(key); } catch { /* ignore */ } };
+
+  // Saves written before the per-variant slots landed sit in the old key. They
+  // are moved rather than dropped, because the one player this matters to is a
+  // player with a board half solved. Runs on every save read; after the first
+  // one there is nothing left in the old key to find.
+  const migrateSave = () => {
+    const legacy = read(KEYS.save, null);
+    if (!legacy) return;
+    remove(KEYS.save);
+    const k = legacy.puzzle?.k ?? 1;
+    if (read(saveKey(k), null) === null) write(saveKey(k), legacy);
+  };
 
   return {
     getSettings: () => ({ ...DEFAULT_SETTINGS, ...read(KEYS.settings, {}) }),
@@ -5269,7 +5395,7 @@ function makeStorage(store = globalThis.localStorage) {
 
     // Typed arrays and Sets do not survive JSON, so they are flattened here and
     // rebuilt on load by the caller.
-    saveGame: (state, elapsed) => write(KEYS.save, {
+    saveGame: (state, elapsed) => write(saveKey(state.puzzle.k ?? 1), {
       puzzle: {
         n: state.puzzle.n,
         k: state.puzzle.k ?? 1,
@@ -5286,10 +5412,23 @@ function makeStorage(store = globalThis.localStorage) {
       hints: state.hints,
       checks: state.checks,
       isRetry: state.isRetry,
-      elapsed
+      elapsed,
+      // Wall clock, not play time — the menu card uses it to order the saves
+      // and to admit when one has been sitting there for weeks.
+      savedAt: Date.now()
     }),
-    loadGame: () => read(KEYS.save, null),
-    clearGame: () => { try { store.removeItem(KEYS.save); } catch { /* ignore */ } },
+    loadGame: (k = 1) => { migrateSave(); return read(saveKey(k), null); },
+    clearGame: (k = 1) => { migrateSave(); remove(saveKey(k)); },
+
+    // Every save there is, newest first, each tagged with the variant it
+    // belongs to. The menu draws one card per entry.
+    listSaves: () => {
+      migrateSave();
+      return SAVE_SLOTS
+        .map((k) => { const save = read(saveKey(k), null); return save && { ...save, k }; })
+        .filter(Boolean)
+        .sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0));
+    },
 
     hasSeenHowto: () => read(KEYS.seenHowto, false),
     markHowtoSeen: () => write(KEYS.seenHowto, true),
@@ -5306,9 +5445,8 @@ function makeStorage(store = globalThis.localStorage) {
     setVisitor: (v) => write(KEYS.visitor, v),
 
     clearAll: () => {
-      for (const key of Object.values(KEYS)) {
-        try { store.removeItem(key); } catch { /* ignore */ }
-      }
+      for (const key of Object.values(KEYS)) remove(key);
+      for (const k of SAVE_SLOTS) remove(saveKey(k));
     }
   };
 }
@@ -6359,6 +6497,40 @@ const howtoRules = (k) => (k === 2
 /** Shown beside the size on the game screen, and only when it is not the default. */
 const VARIANT_TAG = { 2: 'שניים בשורה' };
 
+/** The names on the game cards, reused by the saved-game cards above them. */
+const VARIANT_NAME = { 1: 'נועם אחד', 2: 'פעמיים כי טוב' };
+
+/* ── saved games ──────────────────────────────────────────────────────
+   The menu's resume affordance is a card describing a board you left, not a
+   "continue" button — so the copy has to name which game it is, not just
+   offer to go back to it. */
+const RESUME_SAVE = 'המשך';
+const DISCARD_SAVE = 'מחקו את המשחק';
+const DISCARD_CONFIRM = 'למחוק את המשחק השמור? אי אפשר לחזור אליו אחר כך.';
+
+/**
+ * How long a save has been sitting there — but only once that is worth saying.
+ * Under a day it is just "the game I was playing" and the age is noise; past
+ * that, a board you do not remember starting should say so before you open it.
+ */
+const saveAge = (savedAt, now = Date.now()) => {
+  if (!savedAt) return null;
+  const days = Math.floor((now - savedAt) / 86400000);
+  if (days < 1) return null;
+  if (days === 1) return 'אתמול';
+  if (days === 2) return 'לפני יומיים';
+  if (days < 7) return `לפני ${days} ימים`;
+  const weeks = Math.floor(days / 7);
+  if (weeks === 1) return 'לפני שבוע';
+  if (weeks === 2) return 'לפני שבועיים';
+  return `לפני ${weeks} שבועות`;
+};
+
+/** The one quiet line under a saved game's name: how big, how hard, how far in. */
+const saveMeta = ({ n, difficulty, seconds, savedAt, now }) =>
+  [`${n} × ${n}`, DIFFICULTY[difficulty] ?? difficulty, seconds, saveAge(savedAt, now)]
+    .filter(Boolean).join(' · ');
+
 const winLine = ({ n, difficulty, seconds, strikes, best, k = 1 }) =>
   `לוח ${n} × ${n}, ${DIFFICULTY[difficulty] ?? difficulty}` +
   (VARIANT_TAG[k] ? `, ${VARIANT_TAG[k]}` : '') +
@@ -6382,8 +6554,11 @@ const checksUsedLine = (factor) =>
   `בדקת את הלוח כמה פעמים מעבר לחינם, אז המשחק הזה שווה ${Math.round(factor * 100)}%.`;
 
 const WIN_TITLE = 'מצאת את כולם!';
-const LOSS_TITLE = 'נגמרו החיים';
-const LOSS_LINE = 'שלוש טעויות. נועם ניצח הפעם.';
+// A loss is Noam hiding well, not the player running out of lives — the game
+// is a hunt, and the title it ends on should say who won rather than what was
+// spent. The line under it then only has to carry the count.
+const LOSS_TITLE = 'נועם התחבא טוב מדי';
+const LOSS_LINE = 'שלוש טעויות, והחיפוש נגמר.';
 const NEW_PUZZLE = 'חידה חדשה';
 
 const postMortemLine = (row, col) =>
@@ -6478,7 +6653,7 @@ const CHECK_CLEAN = 'כל האיקסים שסימנת נכונים עד עכשי
 const CHECK_DIRTY = 'משהו לא מסתדר — יש איקס על משבצת שנועם מתחבא בה. ' +
   'תעברו שוב על הסימונים, או תבקשו רמז.';
 
-return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, winLine, hintUsedLine, checksUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE, CHECK_BUTTON, checkButton, CHECK_CLEAN, CHECK_DIRTY };
+return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, VARIANT_NAME, RESUME_SAVE, DISCARD_SAVE, DISCARD_CONFIRM, saveAge, saveMeta, winLine, hintUsedLine, checksUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE, CHECK_BUTTON, checkButton, CHECK_CLEAN, CHECK_DIRTY };
 })();
 
 const $analytics = (() => {
@@ -6780,10 +6955,120 @@ function renderAssists() {
 
 function renderMenu() {
   renderRank();
-  const hasSave = storage.loadGame() !== null;
-  $('resume').hidden = !hasSave;
-  $('resume').classList.toggle('btn-primary', hasSave);
-  $('new-game').classList.toggle('btn-primary', !hasSave);
+  renderSaves();
+}
+
+/**
+ * The saved games, one compact card each.
+ *
+ * This used to be a "continue" button above the setup, and it read as a rival
+ * to "new game" at the bottom — same pill, same weight, opposite ends of the
+ * page, with the accent hopping between them to say which one was live. A card
+ * is a different kind of object: it shows a board that already exists, so it
+ * cannot be confused with the button that composes one, and the accent gets to
+ * stay on "new game" permanently.
+ */
+function renderSaves() {
+  const saves = storage.listSaves();
+  $('saves').hidden = saves.length === 0;
+  $('saves-list').replaceChildren(...saves.map(saveCard));
+}
+
+/**
+ * The thumbnail on a saved-game card shows that board's own regions with the
+ * squares *the player marked* — never the solution. It is a picture of how far
+ * they got, and it must not hand over a hiding place they have not found yet.
+ */
+function saveThumb({ puzzle, marks }) {
+  const thumb = document.createElement('span');
+  thumb.className = 'game-thumb save-thumb';
+  thumb.setAttribute('aria-hidden', 'true');
+  thumb.style.setProperty('--thumb-n', puzzle.n);
+  thumb.replaceChildren(...Array.from({ length: puzzle.n * puzzle.n }, (_, i) => {
+    const cell = document.createElement('span');
+    cell.style.background = `var(--region-${puzzle.regions[i]})`;
+    if (marks[i] === MARK.CAT) cell.className = 'cat';
+    return cell;
+  }));
+  return thumb;
+}
+
+function saveCard(save) {
+  const { n, difficulty } = save.puzzle;
+  const k = save.k ?? 1;
+
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'save-go';
+  go.addEventListener('click', () => resumeSave(save));
+
+  const name = document.createElement('span');
+  name.className = 'save-name';
+  name.textContent = t.VARIANT_NAME[k] ?? '';
+
+  const meta = document.createElement('span');
+  meta.className = 'save-meta';
+  meta.textContent = t.saveMeta({
+    n, difficulty, seconds: formatTime(save.elapsed ?? 0), savedAt: save.savedAt
+  });
+
+  const text = document.createElement('span');
+  text.className = 'save-text';
+  text.append(name, meta);
+
+  const cue = document.createElement('span');
+  cue.className = 'save-cue';
+  cue.textContent = t.RESUME_SAVE;
+
+  go.append(saveThumb(save), text, cue);
+
+  // Discarding is a separate control rather than a mode, but it stays visually
+  // quiet: throwing away a half-solved board is the rarer intent of the two,
+  // and it is the only irreversible thing on this screen.
+  const drop = document.createElement('button');
+  drop.type = 'button';
+  drop.className = 'save-drop';
+  drop.textContent = '✕';
+  drop.title = t.DISCARD_SAVE;
+  drop.setAttribute('aria-label', `${t.DISCARD_SAVE}: ${t.VARIANT_NAME[k] ?? ''}`);
+  drop.addEventListener('click', () => {
+    if (!confirm(t.DISCARD_CONFIRM)) return;
+    storage.clearGame(k);
+
+    // The discarded game may still be the one in memory — reaching the menu
+    // parks a game, it does not end it. Forgetting it here too is what makes
+    // the delete stick: otherwise the next save on the way out (a tab switch,
+    // a reload) writes the slot straight back. That also makes this the moment
+    // it was abandoned for real, so it counts as a quit here rather than
+    // waiting for a pagehide that will now find nothing to report.
+    if (state && (state.puzzle.k ?? 1) === k) {
+      if (state.status === 'playing' && !quitCounted) {
+        quitCounted = true;
+        analytics.quit({ puzzle: state.puzzle, seconds: save.elapsed ?? 0 });
+      }
+      state = null;
+    }
+    renderSaves();
+  });
+
+  const card = document.createElement('div');
+  card.className = 'save-card';
+  card.append(go, drop);
+  return card;
+}
+
+function resumeSave(saved) {
+  const puzzle = {
+    n: saved.puzzle.n,
+    // Saves written before the variant landed have no k; they are all plain.
+    k: saved.puzzle.k ?? 1,
+    regions: Int8Array.from(saved.puzzle.regions),
+    cols: Int8Array.from(saved.puzzle.cols),
+    solution: Int8Array.from(saved.puzzle.solution),
+    difficulty: saved.puzzle.difficulty,
+    cost: saved.puzzle.cost
+  };
+  beginGame(puzzle, { isRetry: saved.isRetry, restore: saved });
 }
 
 const selectedVariant = () => Number(document.querySelector('input[name=variant]:checked').value);
@@ -6988,13 +7273,15 @@ async function newPuzzle() {
     alert(t.GENERATE_FAILED);
     return;
   }
-  storage.clearGame();
+  // Only this variant's slot: a new plain game must not evict a two-in-a-row
+  // board still sitting in the menu.
+  storage.clearGame(puzzle.k ?? 1);
   beginGame(puzzle);
 }
 
 function finishWin() {
   stopClock();
-  storage.clearGame();
+  storage.clearGame(state.puzzle.k ?? 1);
   const seconds = elapsedSeconds();
   const { n, difficulty, k = 1 } = state.puzzle;
 
@@ -7050,7 +7337,7 @@ function finishWin() {
 
 function finishLose() {
   stopClock();
-  storage.clearGame();
+  storage.clearGame(state.puzzle.k ?? 1);
 
   analytics.lose({ puzzle: state.puzzle, seconds: elapsedSeconds() });
 
@@ -7210,22 +7497,6 @@ for (const [selectId, radioName] of [['size', 'size'], ['difficulty', 'difficult
 
 $('new-game').addEventListener('click', newPuzzle);
 $('working-cancel').addEventListener('click', () => genController?.abort());
-
-$('resume').addEventListener('click', () => {
-  const saved = storage.loadGame();
-  if (!saved) return;
-  const puzzle = {
-    n: saved.puzzle.n,
-    // Saves written before the variant landed have no k; they are all one-cat.
-    k: saved.puzzle.k ?? 1,
-    regions: Int8Array.from(saved.puzzle.regions),
-    cols: Int8Array.from(saved.puzzle.cols),
-    solution: Int8Array.from(saved.puzzle.solution),
-    difficulty: saved.puzzle.difficulty,
-    cost: saved.puzzle.cost
-  };
-  beginGame(puzzle, { isRetry: saved.isRetry, restore: saved });
-});
 
 $('back').addEventListener('click', () => {
   stopClock();
