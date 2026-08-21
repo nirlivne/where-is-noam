@@ -581,9 +581,14 @@ main {
   position: relative;
   border: 2px solid var(--grid-line);
 }
+/* Same 16% as a real square (see .cell.is-cat::after): this grid is what
+   teaches the symbol, on the same region fills, so it has to be the same
+   drawing. The ring stays a border rather than a box-shadow — border-box is
+   set globally, so it grows inwards and cannot overflow a mini cell the way
+   the board's shadow ring could. */
 .mini-grid div.cat::after {
   content: '';
-  position: absolute; inset: 8%;
+  position: absolute; inset: 16%;
   border-radius: 50%;
   border: 2px solid var(--ink);
   background: #fff var(--avatar-1-sm, var(--avatar-1)) center / cover no-repeat;
@@ -775,14 +780,35 @@ main {
    repaint and on reload. Never call Math.random() here or in render.js.
 
    The sticker ring is currentColor — the region's paired ink — so Noam
-   picks up the colour of the region he is hiding in. */
+   picks up the colour of the region he is hiding in.
+
+   A SQUARE HOLDING NOAM MUST STILL READ AS PART OF ITS REGION. At k=1 that
+   does not matter: the moment a region's cat is found the region is
+   finished and its colour stops carrying information. At k=2 it still owes
+   a second cat, so the player keeps having to read the fill under a face —
+   and the sticker used to leave almost none of it. The disc sat at inset
+   7%, which left a 7% band of colour, and the rings then ate the band: at
+   2px + 4px they were the last fixed-px measurement in a cell, so on a 9x9
+   phone board a 42px square carried a 36px disc inside 12px of ring and the
+   sticker overflowed its own square. Hence the inset below, and hence
+   rings in cqmin like every other keyline here. */
 .cell.is-cat::after {
   content: '';
   position: absolute;
-  inset: 7%;
+  /* Wide enough that the fill reads as a continuous frame around Noam
+     rather than four corner slivers — connectedness is what makes it
+     legible at a glance, not the raw area left over. */
+  inset: 16%;
   border-radius: 50%;
   background: #fff var(--avatar-1) center / cover no-repeat;
-  box-shadow: 0 0 0 2px currentColor, 0 0 0 4px var(--ink);
+  /* px is what browsers without container query units get, same deal as
+     --line above: a ring at every board size, which is where this started. */
+  box-shadow: 0 0 0 2px currentColor, 0 0 0 3px var(--ink);
+}
+@supports (width: 1cqmin) {
+  .cell.is-cat::after {
+    box-shadow: 0 0 0 2cqmin currentColor, 0 0 0 3.4cqmin var(--ink);
+  }
 }
 
 .cell.is-locked { cursor: default; }
@@ -1590,6 +1616,12 @@ dialog.about .dialog-actions { justify-content: center; }
     <button class="btn btn-primary" id="result-new" type="button">חידה חדשה</button>
   </div>
 </dialog>
+
+<!-- GoatCounter: cookieless usage stats. Counts a pageview on load; the
+     per-game events go through js/analytics.js.
+     count.js ignores localhost, so the dev server never pollutes the data. -->
+<script data-goatcounter="https://nirl.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
 
 <script type="importmap">
 {
@@ -5088,6 +5120,7 @@ function attachInput(boardEl, handlers) {
   boardEl.addEventListener('pointerdown', (e) => {
     const cell = cellFrom(e.target);
     if (cell < 0) return;
+    handlers.onPointerInput?.();
     // Deliberately no preventDefault here: selection and scrolling are already
     // handled by user-select and touch-action in CSS, so there's nothing left
     // to suppress and no reason to eat the event's default behavior.
@@ -5175,7 +5208,8 @@ const KEYS = {
   best: 'cats.best',
   save: 'cats.save',
   seenHowto: 'cats.seenHowto',
-  lastConfig: 'cats.lastConfig'
+  lastConfig: 'cats.lastConfig',
+  visitor: 'cats.visitor'
 };
 
 const DEFAULT_SETTINGS = {
@@ -5262,6 +5296,14 @@ function makeStorage(store = globalThis.localStorage) {
 
     getLastConfig: () => ({ ...DEFAULT_CONFIG, ...read(KEYS.lastConfig, {}) }),
     setLastConfig: (c) => write(KEYS.lastConfig, c),
+
+    // The anonymous analytics profile: { id, firstSeen, sessions, games }. It
+    // is stored here rather than reached for directly so localStorage keeps
+    // exactly one owner, and so clearAll below wipes it along with everything
+    // else — a player who resets their data becomes a new visitor for real.
+    // js/analytics.js explains why the id itself is never transmitted.
+    getVisitor: () => read(KEYS.visitor, null),
+    setVisitor: (v) => write(KEYS.visitor, v),
 
     clearAll: () => {
       for (const key of Object.values(KEYS)) {
@@ -6439,6 +6481,153 @@ const CHECK_DIRTY = 'משהו לא מסתדר — יש איקס על משבצת 
 return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, winLine, hintUsedLine, checksUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE, CHECK_BUTTON, checkButton, CHECK_CLEAN, CHECK_DIRTY };
 })();
 
+const $analytics = (() => {
+const { rankFor } = $score;
+/**
+ * Usage analytics over GoatCounter (the count.js tag lives in index.html).
+ *
+ * GoatCounter stores strings and counts them — it has no numeric aggregation
+ * and no ad-hoc slicing, so every question has to be baked into a path before
+ * the data is collected. Two rules follow from that:
+ *
+ *   1. Every path carries all of its dimensions (`win-time/8-hard-1/4_2-5m`).
+ *      The dashboard filters by substring, so a fully-dimensioned path can
+ *      always be aggregated up — `win-time/8-hard` reads as one histogram —
+ *      but a pre-aggregated one can never be taken apart again. At this
+ *      traffic level fidelity is worth more than a tidy path list.
+ *   2. Numbers are bucketed, since a mean is not something the dashboard can
+ *      compute. Bucket labels carry a sort prefix (`4_2-5m`) so a histogram
+ *      still reads in order when sorted by name rather than by hits.
+ *
+ * Analytics must never be able to break the game: every send is wrapped, and
+ * a blocked script, a dead network, or a file:// open all degrade to silence.
+ */
+
+/** Seconds → bucket. The top bucket is open-ended; 12×12 boards get slow. */
+const TIME_BUCKETS = [
+  [30, '1_0-30s'], [60, '2_30-60s'], [120, '3_1-2m'], [300, '4_2-5m'],
+  [600, '5_5-10m'], [1200, '6_10-20m'], [1800, '7_20-30m'], [Infinity, '8_30m+']
+];
+
+const timeBucket = (seconds) => TIME_BUCKETS.find(([max]) => seconds < max)[1];
+
+/** Small counts stay exact — the difference between one hint and two is the
+ *  whole question — and only blur once the exact number stops meaning much. */
+const countBucket = (n) =>
+  n <= 2 ? String(n) : n <= 5 ? '3-5' : n <= 10 ? '6-10' : n <= 25 ? '11-25' : '26+';
+
+/** Days since first seen, bucketed into a retention curve. */
+const dayBucket = (days) =>
+  days <= 1 ? String(days) : days <= 6 ? '2-6' : days <= 29 ? '7-29' : days <= 89 ? '30-89' : '90+';
+
+/** The dimensions that identify a puzzle type, in one reusable path segment. */
+const tag = ({ n, difficulty, k = 1 }) => `${n}-${difficulty}-${k}`;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const today = () => new Date().toISOString().slice(0, 10);
+const daysBetween = (from, to) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS));
+
+const newId = () => {
+  try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+};
+
+/**
+ * count.js loads async, so an event fired before it arrives is dropped rather
+ * than queued. Everything here follows either a user action deep into the
+ * session or the boot sequence of a page that has already parsed this script,
+ * and a lost event costs a row in a usage chart, not anything the player sees.
+ */
+function goatcounter(path) {
+  try {
+    window.goatcounter?.count?.({ path, event: true });
+  } catch { /* analytics must never break the game */ }
+}
+
+/**
+ * `store` is the app's storage module and `send` the transport, both injected
+ * so this is testable in Node without a browser or a network — same reasoning
+ * as makeStorage. Returns one method per thing worth knowing; each is a
+ * fire-and-forget statement the caller can drop in without handling anything.
+ */
+function makeAnalytics(store, send = goatcounter) {
+  /**
+   * The visitor profile is the one piece of state analytics owns. Its id never
+   * leaves the device: sending it would put thousands of one-hit paths in the
+   * dashboard *and* turn an anonymous counter into a per-person log. What goes
+   * out is only what the id makes derivable — new vs returning, how long since
+   * the first visit, how many games deep — each already bucketed. The profile
+   * lives under the same reset as everything else (storage.clearAll), so a
+   * player who wipes their data genuinely becomes a new visitor.
+   */
+  const profile = () => store.getVisitor() ?? { id: newId(), firstSeen: today(), sessions: 0, games: 0 };
+
+  return {
+    /** Once per page load. This is a single-page app, so a load is a session. */
+    session() {
+      const p = profile();
+      const returning = p.sessions > 0;
+      store.setVisitor({ ...p, sessions: p.sessions + 1 });
+
+      send(returning ? 'visitor/returning' : 'visitor/new');
+      send(`visitor/day-${dayBucket(daysBetween(p.firstSeen, today()))}`);
+      send(`visitor/session-${countBucket(p.sessions + 1)}`);
+      send(`visitor/games-${countBucket(p.games)}`);
+      // Installed-and-launched vs opened in a tab: the clearest signal of
+      // whether the PWA side of this is worth anything.
+      const standalone = globalThis.matchMedia?.('(display-mode: standalone)')?.matches
+        || globalThis.navigator?.standalone === true;
+      send(`mode/${standalone ? 'standalone' : 'browser'}`);
+    },
+
+    /** A game begins. Restores are not starts — see beginGame. */
+    start(puzzle, { isRetry = false } = {}) {
+      const p = profile();
+      store.setVisitor({ ...p, games: p.games + 1 });
+      send(`start/${tag(puzzle)}`);
+      if (isRetry) send(`retry/${tag(puzzle)}`);
+    },
+
+    /**
+     * A win, spread across several paths rather than one combined one: the
+     * combinations multiply out faster than the traffic does, and every path
+     * that only ever gets one hit is a path that answers nothing.
+     */
+    win({ puzzle, seconds, hints, checks, strikes, pointsBefore, pointsAfter }) {
+      const id = tag(puzzle);
+      const totalHints = Object.values(hints ?? {}).reduce((a, b) => a + b, 0);
+      send(`win/${id}`);
+      send(`win-time/${id}/${timeBucket(seconds)}`);
+      send(`win-hints/${id}/${countBucket(totalHints)}`);
+      send(`win-checks/${id}/${countBucket(checks ?? 0)}`);
+      send(`win-strikes/${id}/${strikes}`);
+      // Progression, the one metric a per-game event cannot show: crossing a
+      // rank means the player came back often enough to accumulate.
+      const before = rankFor(pointsBefore), after = rankFor(pointsAfter);
+      if (after.index > before.index) send(`rank-up/${after.name}`);
+    },
+
+    lose({ puzzle, seconds }) {
+      send(`lose/${tag(puzzle)}`);
+      send(`lose-time/${tag(puzzle)}/${timeBucket(seconds)}`);
+    },
+
+    /** Left with a game still running — the third ending, and the invisible one. */
+    quit({ puzzle, seconds }) {
+      send(`quit/${tag(puzzle)}`);
+      send(`quit-time/${tag(puzzle)}/${timeBucket(seconds)}`);
+    },
+
+    /** Which rung of the ladder players actually reach for. */
+    hint(level) { send(`hint/${level}`); },
+
+    /** Free checks are a different act from ones the player paid points for. */
+    check(free) { send(`check/${free ? 'free' : 'paid'}`); }
+  };
+}
+
+return { timeBucket, countBucket, dayBucket, makeAnalytics };
+})();
+
 (() => {
 const { generateAsync } = $generateAsync;
 const { newGame, toggleMark, paintMark, undo, redo, canUndo, canRedo, checkBoard, revealAttempt, postMortem, hint, hintsFrom, anyHint, MARK, MAX_STRIKES } = $game;
@@ -6454,6 +6643,8 @@ const audio = $audio;
 const haptics = $haptics;
 const { attachSheetDrag } = $sheetDrag;
 const t = $strings;
+const { makeAnalytics } = $analytics;
+
 
 
 
@@ -6470,11 +6661,18 @@ const t = $strings;
 
 const $ = (id) => document.getElementById(id);
 const storage = makeStorage();
+const analytics = makeAnalytics(storage);
 
 let settings = storage.getSettings();
 let state = null;
 let cells = [];
 let focusCell = 0;
+// Whether that cursor is drawn. It is a keyboard affordance — arrows move it,
+// Space and Enter act on it — so it shows itself once a key drives it and
+// hides again on the next touch, which is what :focus-visible does for real
+// focus. A player who only taps never sees a ring, and a fresh board does not
+// open with its top-left square looking chosen.
+let cursorVisible = false;
 let hintCell = -1;
 let hintOut = [];   // cells the last hint ruled out, for an elimination hint
 let hintLook = [];  // the unit a hint is talking about; the board dims around it
@@ -6485,6 +6683,7 @@ let tick = null;
 let saveTimer = null;
 let holdAnim = null;
 let genController = null; // AbortController for an in-flight generateAsync, or null
+let quitCounted = false;  // one abandonment event per game, no matter how often the page hides
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -6508,7 +6707,7 @@ const regionCells = (key) => {
 };
 
 function repaint() {
-  render(cells, state, { focusCell, hintCell, hintOut, hintLook });
+  render(cells, state, { focusCell: cursorVisible ? focusCell : -1, hintCell, hintOut, hintLook });
   // Dimming everything outside what the hint names is the board's half of it.
   // Nothing is named until level 2, so a level-1 hint leaves the board alone.
   $('board').classList.toggle('is-looking', hintLook.length > 0);
@@ -6705,8 +6904,14 @@ function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
     state.isRetry = restore.isRetry;
   }
 
+  // A restore is a resumed session, not a new game: counting it would turn
+  // every page reload into a fresh "start" in the numbers.
+  if (!restore) analytics.start(puzzle, { isRetry });
+  quitCounted = false;
+
   cells = buildBoard($('board'), puzzle);
   focusCell = 0;
+  cursorVisible = false;
   clearHint();
   elapsedBase = restore?.elapsed ?? 0;
   startedAt = Date.now();
@@ -6801,7 +7006,17 @@ function finishWin() {
     isRetry: state.isRetry,
     won: true
   });
+  const pointsBefore = storage.getPoints();
   storage.addPoints(points);
+  analytics.win({
+    puzzle: state.puzzle,
+    seconds,
+    hints: state.hints,
+    checks: state.checks,
+    strikes: state.strikes,
+    pointsBefore,
+    pointsAfter: pointsBefore + points
+  });
   // A time record means a clean run: any hint at any level disqualifies it,
   // even though points are only graded down. Checks deliberately do not — they
   // report on marks the player made themselves and name no square, so a record
@@ -6837,6 +7052,8 @@ function finishLose() {
   stopClock();
   storage.clearGame();
 
+  analytics.lose({ puzzle: state.puzzle, seconds: elapsedSeconds() });
+
   const mistake = postMortem(state);
   $('result-title').textContent = t.LOSS_TITLE;
   $('result-line').textContent = t.LOSS_LINE;
@@ -6862,6 +7079,10 @@ function finishLose() {
 
 const handlers = {
   getMark: (cell) => state.marks[cell],
+
+  // A touch or a click puts the cursor away. The repaint that hides it comes
+  // from the toggle this same pointerdown is about to fire.
+  onPointerInput() { cursorVisible = false; },
 
   onToggle(cell) {
     const r = toggleMark(state, cell);
@@ -6922,11 +7143,12 @@ const handlers = {
     if (key === 'ArrowLeft') c = Math.max(0, c - 1);
     if (key === 'ArrowRight') c = Math.min(n - 1, c + 1);
     focusCell = idx(n, r, c);
+    cursorVisible = true;
     repaint();
   },
 
-  onToggleFocused() { handlers.onToggle(focusCell); },
-  onRevealFocused() { handlers.onReveal(focusCell); }
+  onToggleFocused() { cursorVisible = true; handlers.onToggle(focusCell); },
+  onRevealFocused() { cursorVisible = true; handlers.onReveal(focusCell); }
 };
 
 /* ───────────────────────────── wiring ───────────────────────────── */
@@ -7025,8 +7247,10 @@ $('redo').addEventListener('click', () => handlers.onRedo());
  */
 $('check').addEventListener('click', () => {
   if (!state || state.status !== 'playing') return;
+  const wasFree = freeChecksLeft(state.checks) > 0;
   const r = checkBoard(state);
   state = r.state;
+  analytics.check(wasFree);
   showMessage(r.clean ? t.CHECK_CLEAN : t.CHECK_DIRTY, r.clean ? 'clean' : 'warn');
   // The X sound for a wrong mark, the hint sparkle for a clean board. Never the
   // strike sound: nothing was lost, and this is the button you press *instead*
@@ -7045,6 +7269,7 @@ $('hint').addEventListener('click', () => {
   const h = hint(state, level);
   if (!h) return;
   state = h.state;
+  analytics.hint(level);
 
   const wasLooking = hintLook;
   clearHint();
@@ -7148,6 +7373,17 @@ addEventListener('visibilitychange', () => {
   }
 });
 
+// Leaving with a game still running is the third ending, and the only one with
+// no screen of its own. pagehide rather than visibilitychange: backgrounding an
+// app you come back to is not quitting. It is the less reliable of the two on
+// mobile, so read the number as a floor — and once per game either way, since
+// a bfcache restore can hide the same page twice.
+addEventListener('pagehide', () => {
+  if (state?.status !== 'playing' || quitCounted) return;
+  quitCounted = true;
+  analytics.quit({ puzzle: state.puzzle, seconds: elapsedSeconds() });
+});
+
 /* ───────────────────────────── boot ───────────────────────────── */
 
 /**
@@ -7209,6 +7445,7 @@ syncHiddenSelects();
 renderAssists();
 renderMenu();
 showScreen('menu');
+analytics.session();
 
 if (!storage.hasSeenHowto()) {
   storage.markHowtoSeen();
