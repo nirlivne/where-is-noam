@@ -187,12 +187,21 @@ body {
   overflow-x: hidden;
 }
 
-/* Confetti-dot ground. Static, cheap, no blur, no filter — it sits
-   behind everything and never repaints. */
+/* Confetti-dot ground: three tilings whose sizes share no small factor, so the
+   repeat never resolves into a grid the eye can name. No blur, no filter, and
+   nothing here ever repaints — the drift below is a transform, which the
+   compositor applies to a layer it already holds. Animating background-position
+   instead would re-rasterize the whole viewport every frame.
+
+   It sways out and back rather than looping. A seamless wrap would have to
+   travel until all three tilings lined up again — the common multiple of 94,
+   63 and 131 is 775,782px — so a ping-pong is the only honest way to keep the
+   field endless at this speed. The oversized inset keeps the trailing edge off
+   screen while it moves. */
 body::before {
   content: '';
   position: fixed;
-  inset: 0;
+  inset: -40px;
   z-index: -1;
   pointer-events: none;
   opacity: .35;
@@ -202,6 +211,18 @@ body::before {
     radial-gradient(circle, var(--accent-2) 2.5px, transparent 3px);
   background-size: 94px 94px, 63px 63px, 131px 131px;
   background-position: 0 0, 28px 19px, 61px 44px;
+  animation: drift 60s ease-in-out infinite alternate;
+}
+
+/* Paused on the board, not removed: dropping the animation would snap the
+   field back to its origin and twitch the whole background on every screen
+   change. Motion in the corner of the eye also competes with reading rows and
+   columns, which is the one thing the board asks of the player. */
+body:not(.on-menu)::before { animation-play-state: paused; }
+
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(22px, -16px, 0); }
 }
 
 a { color: var(--ink); text-decoration-thickness: 2px; text-underline-offset: 3px; }
@@ -7174,6 +7195,8 @@ function showScreen(which) {
   $('menu').hidden = which !== 'menu';
   $('game').hidden = which !== 'game';
   $('working').hidden = which !== 'working';
+  // The background drift runs on the menu only — see body::before in styles.css.
+  document.body.classList.toggle('on-menu', which === 'menu');
 }
 
 function beginGame(puzzle, { isRetry = false, restore = null } = {}) {
