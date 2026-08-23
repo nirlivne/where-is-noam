@@ -201,7 +201,7 @@ body {
 body::before {
   content: '';
   position: fixed;
-  inset: -40px;
+  inset: -80px;
   z-index: -1;
   pointer-events: none;
   opacity: .35;
@@ -211,7 +211,7 @@ body::before {
     radial-gradient(circle, var(--accent-2) 2.5px, transparent 3px);
   background-size: 94px 94px, 63px 63px, 131px 131px;
   background-position: 0 0, 28px 19px, 61px 44px;
-  animation: drift 60s ease-in-out infinite alternate;
+  animation: drift 28s ease-in-out infinite alternate;
 }
 
 /* Paused on the board, not removed: dropping the animation would snap the
@@ -222,7 +222,7 @@ body:not(.on-menu)::before { animation-play-state: paused; }
 
 @keyframes drift {
   from { transform: translate3d(0, 0, 0); }
-  to   { transform: translate3d(22px, -16px, 0); }
+  to   { transform: translate3d(48px, -34px, 0); }
 }
 
 a { color: var(--ink); text-decoration-thickness: 2px; text-underline-offset: 3px; }
@@ -5383,6 +5383,17 @@ function makeStorage(store = globalThis.localStorage) {
   };
   const remove = (key) => { try { store.removeItem(key); } catch { /* ignore */ } };
 
+  // The menu config was once one flat { n, difficulty, k }. Its size and
+  // difficulty belonged to whichever variant was in play when it was written,
+  // so that is the variant they are read back into; every other variant starts
+  // from the defaults, exactly as a first-time player would.
+  const readConfig = () => {
+    const raw = read(KEYS.lastConfig, null);
+    if (raw?.byVariant) return { last: raw.last ?? DEFAULT_CONFIG.k, byVariant: raw.byVariant };
+    const { n, difficulty, k } = { ...DEFAULT_CONFIG, ...raw };
+    return { last: k, byVariant: { [k]: { n, difficulty } } };
+  };
+
   // Saves written before the per-variant slots landed sit in the old key. They
   // are moved rather than dropped, because the one player this matters to is a
   // player with a board half solved. Runs on every save read; after the first
@@ -5454,8 +5465,23 @@ function makeStorage(store = globalThis.localStorage) {
     hasSeenHowto: () => read(KEYS.seenHowto, false),
     markHowtoSeen: () => write(KEYS.seenHowto, true),
 
-    getLastConfig: () => ({ ...DEFAULT_CONFIG, ...read(KEYS.lastConfig, {}) }),
-    setLastConfig: (c) => write(KEYS.lastConfig, c),
+    // Size and difficulty are remembered per variant, not once for the menu.
+    // The two variants do not even offer the same board sizes — 10×10 is an
+    // ordinary board in the one-cat game and gated in the two-cat one — so a
+    // single shared slot meant picking a variant silently rewrote the other
+    // one's size, and switching back handed the player a board they never
+    // chose. Passing k asks for that variant's record; omitting it asks for
+    // the variant last played.
+    getLastConfig: (k) => {
+      const { last, byVariant } = readConfig();
+      const variant = k ?? last;
+      const { n, difficulty } = { ...DEFAULT_CONFIG, ...byVariant[variant] };
+      return { n, difficulty, k: variant };
+    },
+    setLastConfig: ({ n, difficulty, k }) => {
+      const { byVariant } = readConfig();
+      write(KEYS.lastConfig, { last: k, byVariant: { ...byVariant, [k]: { n, difficulty } } });
+    },
 
     // The anonymous analytics profile: { id, firstSeen, sessions, games }. It
     // is stored here rather than reached for directly so localStorage keeps
@@ -6073,8 +6099,17 @@ const DRAG = 0.4;
 const BURST_DURATION = 3400;
 const FADE_DURATION = 550;
 
+// three.js is the app's one remaining network dependency, so the offline case
+// is a normal one, not an error: on a phone that installed the PWA and never
+// went online again, this import simply never resolves. The memo is dropped on
+// failure so a later attempt can retry — otherwise one offline click would
+// remember the rejection and there would be no confetti for the rest of the
+// session, even back on wifi.
 let threePromise = null;
-const loadThree = () => (threePromise ??= import('three'));
+const loadThree = () => (threePromise ??= import('three').catch((err) => {
+  threePromise = null;
+  throw err;
+}));
 
 function cssVar(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -6094,9 +6129,10 @@ async function celebrateAbout(dialogEl) {
   // than after (getAnimations() is empty, and this resolves immediately, if
   // the animation already finished by the time we get here).
   const [THREE] = await Promise.all([
-    loadThree(),
+    loadThree().catch(() => null),
     Promise.all(dialogEl.getAnimations().map((a) => a.finished)).catch(() => {})
   ]);
+  if (!THREE) return;         // offline, or the CDN is blocked — dialog, no confetti
   if (!dialogEl.open) return; // closed again while we were waiting
 
   audio.play('confetti');
@@ -6527,7 +6563,6 @@ const VARIANT_NAME = { 1: 'נועם אחד', 2: 'פעמיים כי טוב' };
    offer to go back to it. */
 const RESUME_SAVE = 'המשך';
 const DISCARD_SAVE = 'מחקו את המשחק';
-const DISCARD_CONFIRM = 'למחוק את המשחק השמור? אי אפשר לחזור אליו אחר כך.';
 
 /**
  * How long a save has been sitting there — but only once that is worth saying.
@@ -6674,7 +6709,7 @@ const CHECK_CLEAN = 'כל האיקסים שסימנת נכונים עד עכשי
 const CHECK_DIRTY = 'משהו לא מסתדר — יש איקס על משבצת שנועם מתחבא בה. ' +
   'תעברו שוב על הסימונים, או תבקשו רמז.';
 
-return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, VARIANT_NAME, RESUME_SAVE, DISCARD_SAVE, DISCARD_CONFIRM, saveAge, saveMeta, winLine, hintUsedLine, checksUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE, CHECK_BUTTON, checkButton, CHECK_CLEAN, CHECK_DIRTY };
+return { DIFFICULTY, RANKS, displayCol, REGION_NAMES, regionName, unitName, hintLead, hintPremise, hintText, badMarkLine, howtoRules, VARIANT_TAG, VARIANT_NAME, RESUME_SAVE, DISCARD_SAVE, saveAge, saveMeta, winLine, hintUsedLine, checksUsedLine, WIN_TITLE, LOSS_TITLE, LOSS_LINE, NEW_PUZZLE, postMortemLine, GENERATE_FAILED, attemptLine, nextWorkingPhrase, CLEAR_CONFIRM, HINT_BUTTON, HINT_BUTTON_MORE, CHECK_BUTTON, checkButton, CHECK_CLEAN, CHECK_DIRTY };
 })();
 
 const $analytics = (() => {
@@ -7052,8 +7087,11 @@ function saveCard(save) {
   drop.textContent = '✕';
   drop.title = t.DISCARD_SAVE;
   drop.setAttribute('aria-label', `${t.DISCARD_SAVE}: ${t.VARIANT_NAME[k] ?? ''}`);
+  // No confirmation: starting a new game replaces a save without a word, so
+  // guarding the explicit ✕ and not the implicit overwrite taught the wrong
+  // lesson about which action is dangerous. The card is one board, one press
+  // away from being generated again.
   drop.addEventListener('click', () => {
-    if (!confirm(t.DISCARD_CONFIRM)) return;
     storage.clearGame(k);
 
     // The discarded game may still be the one in memory — reaching the menu
@@ -7471,22 +7509,33 @@ function syncHiddenSelects() {
   $('variant').value = String(selectedVariant());
 }
 
-// The last variant/size/difficulty picked becomes the default next time the
-// menu loads. Variant is applied before size, because it decides which sizes
-// exist at all.
+// The last variant picked becomes the default next time the menu loads; its
+// size and difficulty follow from the variant, not the other way round.
 function applyLastConfig() {
-  const { n, difficulty, k } = storage.getLastConfig();
+  const { k } = storage.getLastConfig();
   const variantRadio = document.querySelector(`input[name=variant][value="${k}"]`);
   if (variantRadio) variantRadio.checked = true;
-  renderSizeOptions();
+  applyVariantConfig();
+}
 
-  const sizeRadio = document.querySelector(`input[name=size][value="${n}"]`);
+// Size and difficulty are remembered per variant (see storage.getLastConfig),
+// so this runs on load *and* on every variant switch. Switching used to leave
+// the other variant's size behind — pick 10×10 in the one-cat game, look at
+// the two-cat game, which has no 10 and falls back to 8, come back and find
+// your 10 gone. Each variant now answers with the board it was last played at.
+function applyVariantConfig() {
+  const { n, difficulty } = storage.getLastConfig(selectedVariant());
+
   const diffRadio = document.querySelector(`input[name=difficulty][value="${difficulty}"]`);
-  // A gated-off size (see renderSizeOptions) must not come back just because
-  // it was picked before its toggle was turned off, or before the variant
-  // that offered it was switched away from.
-  if (sizeRadio && !sizeRadio.hidden) sizeRadio.checked = true;
   if (diffRadio) diffRadio.checked = true;
+
+  // Gate the sizes first, so a remembered size this variant does not offer —
+  // or one behind an experimental toggle that is now off — stays in storage
+  // instead of being reinstated here. renderSizeOptions has already fallen
+  // back to a size that exists by the time we get to look.
+  renderSizeOptions();
+  const sizeRadio = document.querySelector(`input[name=size][value="${n}"]`);
+  if (sizeRadio && !sizeRadio.hidden) sizeRadio.checked = true;
 }
 
 function persistConfig() {
@@ -7503,7 +7552,7 @@ document.querySelectorAll('input[name=size], input[name=difficulty]')
 // Changing the variant re-gates the sizes and redraws the How to play card,
 // since both of those describe the variant rather than the board.
 document.querySelectorAll('input[name=variant]').forEach(el => el.addEventListener('change', () => {
-  renderSizeOptions();
+  applyVariantConfig();
   syncHiddenSelects();
   persistConfig();
   buildHowto();
@@ -7513,7 +7562,8 @@ for (const [selectId, radioName] of [['size', 'size'], ['difficulty', 'difficult
   $(selectId).addEventListener('change', (e) => {
     const radio = document.querySelector(`input[name=${radioName}][value="${e.target.value}"]`);
     if (radio) radio.checked = true;
-    if (radioName === 'variant') { renderSizeOptions(); buildHowto(); }
+    if (radioName === 'variant') { applyVariantConfig(); buildHowto(); }
+    syncHiddenSelects();
     persistConfig();
   });
 }
