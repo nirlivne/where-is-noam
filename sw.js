@@ -7,14 +7,18 @@
 // cache with no manual version bump. In dev (served unbundled via
 // tools/serve.js) it stays the literal placeholder below, which is fine —
 // it only needs to change, not mean anything.
-const CACHE_VERSION = 'c06f90c149';
+const CACHE_VERSION = '85bca640ed';
 const CACHE_NAME = `cats-${CACHE_VERSION}`;
-// three.js (confetti, loaded lazily from the jsdelivr CDN) lives in its own
+// canvas-confetti (loaded lazily from the jsdelivr CDN) lives in its own
 // cache so it survives app-shell cache rotations instead of being evicted
 // on every publish.
 const CDN_CACHE = 'cats-cdn';
 
-const PRECACHE = ['./index.html', './manifest.json', './assets/noam-192.png', './assets/noam-512.png'];
+// The whole app is one HTML file, so offline play needs exactly that file and
+// the manifest. The icons are deliberately left out: they are a few hundred KB
+// that only an install prompt or a home-screen tile ever looks at, and the
+// fetch handler below caches them the first time something asks.
+const PRECACHE = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -46,7 +50,7 @@ self.addEventListener('fetch', (event) => {
 
   if (url.hostname === 'cdn.jsdelivr.net') {
     // Cache-first, filled in opportunistically: confetti keeps working
-    // offline once three.js has loaded successfully at least once.
+    // offline once canvas-confetti has loaded successfully at least once.
     event.respondWith(
       caches.open(CDN_CACHE).then(async (cache) => {
         const cached = await cache.match(request);
