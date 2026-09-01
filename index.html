@@ -6120,7 +6120,12 @@ const haptics = $haptics;
 
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
-const COUNT = 200;
+// One shared knob for "how strong is the burst": more pieces, bigger pieces,
+// slower fade, all by the same ~20% so the three stay proportional if this
+// gets tuned again later.
+const BOOST = 1.2;
+const COUNT = Math.round(200 * BOOST);
+const FADE_TICKS = Math.round(200 * BOOST); // canvas-confetti's own default is 200
 
 // canvas-confetti is the app's one remaining network dependency, so the
 // offline case is a normal one, not an error: on a phone that installed the
@@ -6178,9 +6183,14 @@ async function celebrateAbout(dialogEl) {
   haptics.play('confetti');
 
   const colors = [cssVar('--accent', '#FF5A36'), cssVar('--accent-2', '#5FE3C0'), cssVar('--accent-3', '#FFD93D')];
-  const defaults = { origin: { y: 0.7 }, colors, shapes: ['square'] };
+  const defaults = { origin: { y: 0.7 }, colors, shapes: ['square'], ticks: FADE_TICKS };
   const layer = (particleRatio, opts) =>
-    burst({ ...defaults, ...opts, particleCount: Math.round(COUNT * particleRatio) });
+    burst({
+      ...defaults,
+      ...opts,
+      particleCount: Math.round(COUNT * particleRatio),
+      scalar: (opts.scalar ?? 1) * BOOST
+    });
 
   // Five overlapping sub-bursts at different spread angles, launch speeds,
   // drag ("decay") and sizes ("scalar") instead of one uniform burst — that's

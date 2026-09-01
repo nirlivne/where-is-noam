@@ -7,7 +7,7 @@
 // cache with no manual version bump. In dev (served unbundled via
 // tools/serve.js) it stays the literal placeholder below, which is fine —
 // it only needs to change, not mean anything.
-const CACHE_VERSION = '85bca640ed';
+const CACHE_VERSION = '861959dc10';
 const CACHE_NAME = `cats-${CACHE_VERSION}`;
 // canvas-confetti (loaded lazily from the jsdelivr CDN) lives in its own
 // cache so it survives app-shell cache rotations instead of being evicted
